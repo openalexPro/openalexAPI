@@ -20,9 +20,15 @@ Depends:
     R (>= 4.1.0)
 Imports:
     DBI,
-    duckdb
+    duckdb,
+    httr2,
+    jsonlite,
+    openalexPro,
+    plumber2
 Suggests:
     callr,
+    httpuv,
+    pkgload,
     testthat (>= 3.0.0),
     vcr,
     withr
