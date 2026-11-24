@@ -168,3 +168,28 @@ test_that("slug keys are URL-encoded; true/false columns list both values", {
   expect_equal(unname(x[["true"]]), n_sql(con, "is_retracted"))
   expect_equal(unname(x[["false"]]), n_sql(con, "NOT is_retracted"))
 })
+
+test_that("the added group_by columns", {
+  con <- local_fixture_con()
+  lin <- counts(grouped(con, "authorships.institutions.lineage"))
+  want <- DBI::dbGetQuery(con, "SELECT l, count(DISTINCT oaapi_id) AS n FROM (SELECT oaapi_id,
+    unnest(flatten(list_transform(authorships, lambda a: flatten(list_transform(a.institutions,
+      lambda i: i.lineage))))) AS l FROM works) GROUP BY l ORDER BY n DESC, l LIMIT 5")
+  expect_equal(unname(lin[want$l]), as.numeric(want$n))
+  sf <- grouped(con, "primary_topic.subfield.id")$group_by[[1]]
+  expect_match(sf$key, "^https://openalex.org/subfields/")
+  expect_false(is.null(sf$key_display_name))
+  x <- counts(grouped(con, "citation_normalized_percentile.is_in_top_1_percent"))
+  expect_setequal(names(x), c("true", "false"))
+  issn <- counts(grouped(con, "primary_location.source.issn"))
+  expect_false(any(grepl("^https://", names(issn))))
+})
+
+test_that("publisher groups carry the publishers' names", {
+  con <- local_fixture_con()
+  g <- grouped(con, "primary_location.source.publisher_lineage")$group_by
+  expect_gt(length(g), 0)
+  named <- vapply(g, function(x) !identical(x$key_display_name, x$key), TRUE)
+  expect_true(any(named))
+  expect_equal(grouped(con, "primary_location.source.host_organization_lineage")$group_by, g)
+})

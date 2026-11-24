@@ -81,7 +81,7 @@ test_that("unsupported input stops with a clear 400", {
   expect_s3_class(e, "oaapi_error")
   expect_equal(e$status, 400L)
   expect_match(conditionMessage(e), "not supported")
-  expect_match(conditionMessage(err(list(leaf("raw_author_name.search", "x", "has")))),
+  expect_match(conditionMessage(err(list(leaf("no_such_field.search", "x", "has")))),
                "Search column")
   expect_match(conditionMessage(err(list(leaf("type", "x", ">")))), "Operator")
   expect_match(conditionMessage(err(list(leaf("publication_year", "abc")))), "number")
@@ -146,4 +146,82 @@ test_that("a struct field the corpus lacks is a 400", {
   expect_s3_class(e, "oaapi_error")
   expect_equal(e$status, 400L)
   expect_match(conditionMessage(e), "not available")
+})
+
+test_that("the added filters match hand-written SQL", {
+  con <- local_fixture_con()
+  one <- function(sql) DBI::dbGetQuery(con, sql)[[1]][[1]]
+  lineage <- "flatten(list_transform(authorships, lambda a: flatten(list_transform(a.institutions, lambda i: i.lineage))))"
+  # a parent institution that is not listed directly
+  parent <- one(paste0("SELECT l FROM (SELECT unnest(", lineage, ") AS l FROM works)
+    WHERE l NOT IN (SELECT unnest(flatten(list_transform(authorships, lambda a:
+      list_transform(a.institutions, lambda i: i.id)))) FROM works) LIMIT 1"))
+  expect_gt(n_oqo(con, list(leaf("authorships.institutions.lineage", parent))), 0)
+  expect_equal(n_oqo(con, list(leaf("authorships.institutions.lineage", parent))),
+               n_sql(con, sprintf("list_contains(%s, '%s')", lineage, parent)))
+  expect_equal(n_oqo(con, list(leaf("authorships.institutions.id", parent))), 0)
+
+  expect_equal(n_oqo(con, list(leaf("publication_date", "2009-01-01", ">="))),
+               n_sql(con, "publication_date >= DATE '2009-01-01'"))
+  expect_equal(n_oqo(con, list(leaf("from_created_date", "2016-06-01"))),
+               n_sql(con, "CAST(created_date AS DATE) >= DATE '2016-06-01'"))
+  expect_equal(n_oqo(con, list(leaf("citation_normalized_percentile.value", 0.9, ">"))),
+               n_sql(con, "citation_normalized_percentile.value > 0.9"))
+  expect_equal(n_oqo(con, list(leaf("citation_normalized_percentile.is_in_top_10_percent", TRUE))),
+               n_sql(con, "citation_normalized_percentile.is_in_top_10_percent"))
+  expect_equal(n_oqo(con, list(leaf("open_access.any_repository_has_fulltext", TRUE))),
+               n_sql(con, "open_access.any_repository_has_fulltext"))
+
+  pmid <- one("SELECT ids.pmid FROM works WHERE ids.pmid IS NOT NULL LIMIT 1")
+  expect_equal(n_oqo(con, list(leaf("ids.pmid", sub(".*/", "", pmid)))), 1)
+  orcid <- one("SELECT o FROM (SELECT unnest(list_transform(authorships, lambda a: a.author.orcid)) AS o
+                FROM works) WHERE o IS NOT NULL LIMIT 1")
+  expect_equal(n_oqo(con, list(leaf("authorships.author.orcid", sub(".*/", "", orcid)))),
+               n_sql(con, sprintf("list_contains(list_transform(authorships, lambda a: a.author.orcid), '%s')", orcid)))
+  issn <- one("SELECT unnest(primary_location.source.issn) FROM works WHERE len(primary_location.source.issn) > 0 LIMIT 1")
+  expect_equal(n_oqo(con, list(leaf("primary_location.source.issn", issn))),
+               n_sql(con, sprintf("list_contains(primary_location.source.issn, '%s')", issn)))
+  pub <- one("SELECT unnest(primary_location.source.host_organization_lineage) FROM works
+              WHERE len(primary_location.source.host_organization_lineage) > 0 LIMIT 1")
+  for (col in c("primary_location.source.host_organization_lineage",
+                "primary_location.source.publisher_lineage")) {
+    expect_equal(n_oqo(con, list(leaf(col, sub(".*/", "", pub)))),
+                 n_sql(con, sprintf("list_contains(primary_location.source.host_organization_lineage, '%s')", pub)))
+  }
+  sub_id <- one("SELECT primary_topic.subfield.id FROM works WHERE primary_topic IS NOT NULL LIMIT 1")
+  expect_equal(n_oqo(con, list(leaf("primary_topic.subfield.id", sub(".*/", "", sub_id)))),
+               n_sql(con, sprintf("primary_topic.subfield.id = '%s'", sub_id)))
+  # a column the corpus lacks
+  e <- tryCatch(n_oqo(con, list(leaf("funders.id", "F1")), columns = DBI::dbGetQuery(con, "DESCRIBE works")$column_name),
+                oaapi_error = function(e) conditionMessage(e))
+  expect_match(e, "not available")
+})
+
+test_that("affiliation and author-name search: words across strings, phrases within one", {
+  con <- local_fixture_con()
+  has <- function(col, v) list(column_id = col, value = v, operator = "has")
+  aff <- "flatten(list_transform(authorships, lambda a: a.raw_affiliation_strings))"
+  joined <- sprintf("array_to_string(list_filter(%s, lambda x: x IS NOT NULL), ' | ')", aff)
+  words <- n_sql(con, sprintf("regexp_matches(%1$s, '(?i)\\buniversity\\b') AND regexp_matches(%1$s, '(?i)\\bcolumbia\\b')", joined))
+  expect_gt(words, 0)
+  for (col in c("raw_affiliation_strings.search", "raw_affiliation_strings.search.exact")) {
+    expect_equal(n_oqo(con, list(has(col, "university columbia"))), words, label = col)
+  }
+  phrase <- n_sql(con, sprintf("coalesce(list_bool_or(list_transform(%s, lambda s: regexp_matches(s, '(?i)\\bcolumbia\\W+university\\b'))), false)", aff))
+  expect_gt(phrase, 0)
+  expect_equal(n_oqo(con, list(has("raw_affiliation_strings.search.exact", '"columbia university"'))), phrase)
+  # a phrase must not span two affiliations
+  expect_lte(phrase, words)
+  name <- n_sql(con, "regexp_matches(array_to_string(list_filter(list_transform(authorships, lambda a: a.raw_author_name), lambda x: x IS NOT NULL), ' | '), '(?i)\\bsmith\\b')")
+  expect_equal(n_oqo(con, list(has("raw_author_name.search", "smith"))), name)
+})
+
+test_that("a failing prelude statement drops the tables made before it", {
+  con <- local_fixture_con()
+  sql <- list(prelude = c("CREATE OR REPLACE TEMP TABLE oaapi_s1 AS SELECT 1 AS i",
+                          "CREATE OR REPLACE TEMP TABLE oaapi_s2 AS SELECT no_such_column FROM works"),
+              temp = c("oaapi_s1", "oaapi_s2"))
+  expect_error(openalexAPI:::.api_run_prelude(con, sql))
+  left <- DBI::dbGetQuery(con, "SELECT table_name FROM duckdb_tables() WHERE temporary")$table_name
+  expect_false(any(c("oaapi_s1", "oaapi_s2") %in% left))
 })

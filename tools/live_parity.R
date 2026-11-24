@@ -31,11 +31,22 @@ checks <- c(
   "authorships.countries:au", "institutions.country_code:us",
   "authorships.institutions.type:education", "primary_location.source.type:journal",
   "primary_topic.field.id:23", "sustainable_development_goals.id:14",
-  "is_retracted:false", "from_publication_date:2015-06-01", "primary_location.source.id:null"
+  "is_retracted:false", "from_publication_date:2015-06-01", "primary_location.source.id:null",
+  "authorships.institutions.lineage:I2801453606", "funders.id:F4320306076",
+  "publication_date:2015-03-01", "from_created_date:2016-01-01",
+  "citation_normalized_percentile.value:>0.9", "citation_normalized_percentile.is_in_top_1_percent:true",
+  "open_access.any_repository_has_fulltext:true", "primary_location.source.issn:0722-4028",
+  "primary_location.source.publisher_lineage:P4310319965", "primary_topic.subfield.id:2303",
+  "raw_affiliation_strings.search:james cook university",
+  "raw_affiliation_strings.search:\"james cook university\"",
+  "raw_author_name.search:hughes"
 )
-searches <- c("bleaching", "\"coral reef\"", "temperature AND symbiont", "coral NOT bleaching")
+searches <- c("bleaching", "\"coral reef\"", "temperature AND symbiont", "coral NOT bleaching",
+              "\"coral bleaching\"~3")
 group_dims <- c("type", "language", "open_access.oa_status", "authorships.countries",
-                "primary_location.source.type", "is_retracted")
+                "primary_location.source.type", "is_retracted", "authorships.institutions.lineage",
+                "funders.id", "primary_topic.subfield.id", "primary_location.source.issn",
+                "citation_normalized_percentile.is_in_top_10_percent")
 
 oa <- "https://api.openalex.org"
 key <- tryCatch(openalexPro::pro_api_key(), error = function(e) NULL)
@@ -88,8 +99,9 @@ add <- function(kind, query, a, b, expected_diff = FALSE) {
 }
 add("corpus", q_filter, n_q, count_of(local, ""))
 for (f in checks) {
-  add("filter", f, count_of(oa, paste0("filter=", q_filter, ",", f)),
-      count_of(local, paste0("filter=", f)),
+  fe <- utils::URLencode(f, reserved = FALSE)
+  add("filter", f, count_of(oa, paste0("filter=", q_filter, ",", fe)),
+      count_of(local, paste0("filter=", fe)),
       expected_diff = grepl("cited_by_count|fwci", f))
 }
 for (s in searches) {

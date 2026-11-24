@@ -160,10 +160,18 @@ oqo_to_sql <- function(oqo, con, columns = NULL) {
 #' @keywords internal
 #' @noRd
 .api_run_prelude <- function(con, sql) {
-  for (stmt in sql$prelude) .api_get(con, stmt, exec = TRUE)
-  function() {
+  drop <- function() {
     for (t in sql$temp) DBI::dbExecute(con, paste("DROP TABLE IF EXISTS", t))
   }
+  # a failing statement must not leave the tables made before it behind
+  tryCatch(
+    for (stmt in sql$prelude) .api_get(con, stmt, exec = TRUE),
+    error = function(e) {
+      drop()
+      stop(e)
+    }
+  )
+  drop
 }
 
 #' The group_by dimension: column, its `{k, d}` list SQL, include_unknown
@@ -190,6 +198,9 @@ oqo_to_sql <- function(oqo, con, columns = NULL) {
   }
   # OpenAlex lists both values of a true/false column, also with count 0
   boolean <- column %in% c("open_access.is_oa", "is_retracted", "is_paratext", "has_doi",
-                           "has_abstract", "has_references")
+                           "has_abstract", "has_references",
+                           "open_access.any_repository_has_fulltext",
+                           "citation_normalized_percentile.is_in_top_1_percent",
+                           "citation_normalized_percentile.is_in_top_10_percent")
   list(column = column, pairs = unname(pairs), include_unknown = unknown, boolean = boolean)
 }

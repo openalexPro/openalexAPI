@@ -1,5 +1,24 @@
 # openalexAPI (development version)
 
+- 15 more filters, from OpenAlex's own OQL examples (`tools/oql_coverage.R`):
+  `authorships.institutions.lineage`, `authorships.author.orcid`,
+  `funders.id`, `publication_date`, `from_created_date` / `to_created_date`,
+  `citation_normalized_percentile.value` / `.is_in_top_1_percent` /
+  `.is_in_top_10_percent`, `open_access.any_repository_has_fulltext`,
+  `ids.pmid`, `ids.pmcid`, `primary_location.source.issn`,
+  `primary_location.source.publisher_lineage` (`host_organization_lineage`),
+  `primary_topic.subfield.id`; `group_by` on those OpenAlex can group by.
+- Search in affiliation strings and author names
+  (`raw_affiliation_strings.search[.exact]`, `raw_author_name.search[.exact]`),
+  and proximity search (`"a"~N~"b"`, chains with a distance per pair,
+  `"a b"~N`; N up to 1000). Phrases and proximity in the stemmed search
+  columns match word stems (`"coral reefs"` also finds "coral reef").
+- `group_by` on publisher lineage shows the publishers' names.
+- Coverage: 156 of OpenAlex's 174 OQL example queries run locally (was 115);
+  the rest need collections, semantic search, multi-dimension `group_by`,
+  comparisons or nested queries. Live comparison with OpenAlex
+  (`tools/live_parity.R`): all 47 filter and `group_by` checks equal, the 5
+  full-text searches differ as expected (OpenAlex also searches full texts).
 - Speed: search terms are computed once per request (temp tables) instead of
   per work. On 11,000 works a 20-term OR search went from 21 s to 0.3 s and
   OpenAlex's 114-term systematic-review example from not finishing to 1.7 s;

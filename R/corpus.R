@@ -54,7 +54,7 @@ prepare_corpus <- function(
 #' a version with another layout is rebuilt. Bump it when `.api_build()` changes.
 #' @keywords internal
 #' @noRd
-.api_build_version <- "3"
+.api_build_version <- "4"
 
 #' Columns added by openalexPro or a query, not OpenAlex fields: never served
 #' @keywords internal
@@ -86,8 +86,20 @@ prepare_corpus <- function(
   } else {
     "NULL"
   }
+  # publishers (host organization lineage) with their names, for group_by
+  pl <- desc$column_type[desc$column_name == "primary_location"]
+  lin <- "primary_location.source.host_organization_lineage"
+  publishers <- if (length(pl) && grepl("host_organization_lineage_names", pl, fixed = TRUE)) {
+    paste0("list_transform(generate_series(1, coalesce(len(", lin, "), 0)), lambda i: ",
+           "{'id': ", lin, "[i], 'name': primary_location.source.host_organization_lineage_names[i]})")
+  } else if (length(pl) && grepl("host_organization_lineage", pl, fixed = TRUE)) {
+    paste0("list_transform(", lin, ", lambda x: {'id': x, 'name': NULL::VARCHAR})")
+  } else {
+    "NULL::STRUCT(id VARCHAR, name VARCHAR)[]"
+  }
   DBI::dbExecute(con, paste0(
     "CREATE TABLE works AS SELECT * ", casts, ", ",
+    publishers, " AS oaapi_publishers, ",
     "id_key(id) AS oaapi_id, ",
     if (has("doi")) "doi_key(doi)" else "NULL::VARCHAR", " AS oaapi_doi, ",
     if (has("referenced_works")) "list_transform(referenced_works, lambda x: id_key(x))" else
