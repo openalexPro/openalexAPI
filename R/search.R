@@ -79,6 +79,13 @@
     paste0(fts, ".match_bm25(oaapi_id, ", DBI::dbQuoteLiteral(con, paste(t, collapse = " ")),
            ", fields := '", fields, "', conjunctive := 1)")
   }
+  # The match as a set of IDs, computed once per term: a per-work BM25 call
+  # inside a deep AND/OR tree makes DuckDB unusably slow (a 114-term
+  # systematic-review strategy did not finish in minutes; this way, 5 s)
+  matches <- function(score) {
+    paste0("oaapi_id IN (SELECT oaapi_id FROM ", sub("^fts_main_", "", fts),
+           " WHERE ", score, " IS NOT NULL)")
+  }
   regex <- function(re, con) {
     paste0("regexp_matches(", text, ", ", DBI::dbQuoteLiteral(con, paste0("(?i)", re)), ")")
   }
@@ -89,7 +96,7 @@
       p <- .api_search_parse(v, column, exact)
       score <- bm25(p, con)
       parts <- c(
-        if (!is.null(score)) paste(score, "IS NOT NULL"),
+        if (!is.null(score)) matches(score),
         vapply(p$phrases, function(ph) {
           w <- .api_re_escape(strsplit(trimws(ph), "\\s+")[[1]])
           regex(paste0("\\b", paste(w, collapse = "\\W+"), "\\b"), con)
