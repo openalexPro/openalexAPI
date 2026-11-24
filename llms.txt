@@ -1,0 +1,170 @@
+# openalexAPI
+
+> **Alpha.** openalexAPI works and is tested, but its functions,
+> arguments and the details of its responses may still change between
+> versions. It is not on the openalexPro r-universe yet; install it from
+> GitHub.
+
+**openalexAPI** serves a local Parquet corpus of OpenAlex works through
+a web API that answers like the [OpenAlex
+API](https://api.openalex.org). You can run the same queries against
+your own data that you run against OpenAlex: classic `filter=` /
+`search=` URLs, OQL (OpenAlex Query Language), OQO (OpenAlex Query
+Object), `group_by`, `sort` and paging. It also includes a small web
+page for running queries in the browser.
+
+Because the answers look like OpenAlex’s, the download functions of
+[openalexPro](https://github.com/openalexPro/openalexPro) work against
+the local server unchanged. Point
+[`pro_query()`](https://openalexpro.github.io/openalexPro/reference/pro_query.html)
+at it with `endpoint =`.
+
+The corpus can come from:
+
+- [`openalexPro::pro_request_parquet()`](https://openalexpro.github.io/openalexPro/reference/pro_request_parquet.html)
+  /
+  [`pro_fetch()`](https://openalexpro.github.io/openalexPro/reference/pro_fetch.html)
+  downloads
+- an extraction from the OpenAlex snapshot (openalexSnapshot)
+- any other source with the OpenAlex works schema
+
+It is meant for **project-sized corpora**, not the whole snapshot.
+
+## Installation
+
+openalexAPI is not on the openalexPro r-universe yet. Install it from
+GitHub; its dependencies, openalexPro included, come along:
+
+``` r
+
+# install.packages("pak")
+pak::pak("openalexPro/openalexAPI")       # main: the current alpha version
+pak::pak("openalexPro/openalexAPI@dev")   # dev: the newest changes
+```
+
+Or with remotes:
+
+``` r
+
+# install.packages("remotes")
+remotes::install_github("openalexPro/openalexAPI")
+```
+
+## Quick start
+
+``` r
+
+library(openalexAPI)
+
+# A corpus downloaded with openalexPro, or any folder of works Parquet files
+serve_corpus("my_project/parquet", port = 8000)
+```
+
+Then open <http://127.0.0.1:8000/> for the web page, or query the API:
+
+``` R
+http://127.0.0.1:8000/works?filter=type:article,publication_year:>2015&search=coral bleaching
+http://127.0.0.1:8000/works?filter=type:article&group_by=authorships.countries
+http://127.0.0.1:8000/?oql=works where type is article and year >= 2015
+http://127.0.0.1:8000/works/W2741809807
+```
+
+From another R session, download a subset of the corpus with
+openalexPro, exactly as from OpenAlex:
+
+``` r
+
+library(openalexPro)
+q <- pro_query(
+  entity = "works", type = "article", search = "coral bleaching",
+  endpoint = "http://127.0.0.1:8000"
+)
+pro_fetch(q, project_folder = "subset")
+```
+
+## How it works
+
+``` R
+classic URL or OQL --> OpenAlex /query (free) --> OQO --> DuckDB SQL --> OpenAlex-shaped JSON
+OQO                -----------------------------^  (offline)
+```
+
+[`prepare_corpus()`](https://openalexpro.github.io/openalexAPI/reference/prepare_corpus.md)
+(run by
+[`serve_corpus()`](https://openalexpro.github.io/openalexAPI/reference/serve_corpus.md))
+reads the Parquet files into a cached DuckDB database. The cache holds
+one row per work, IDs and DOIs normalised so they match in any form, and
+full-text indexes over title and abstract. OpenAlex’s free `/query`
+endpoint translates classic URLs and OQL into an OQO, so the query
+languages are exactly OpenAlex’s.
+[`oqo_to_sql()`](https://openalexpro.github.io/openalexAPI/reference/oqo_to_sql.md)
+compiles the OQO into SQL. An OQO sent directly runs without network
+access.
+
+## What is supported
+
+- **48 works filters:** type, year and dates (also the creation date),
+  language, open access, citations and percentiles, authors and ORCIDs,
+  institutions (also with their lineage), countries, funders, sources,
+  ISSNs, publishers, topics down to subfields, keywords, SDGs, IDs
+  (OpenAlex, DOI, PMID, PMCID), `cites` and `cited_by`. AND, OR (`a|b`),
+  negation (`!a`), ranges, and `null` for “field missing” all work.
+- **`group_by`** on one dimension, with OpenAlex’s key formats.
+  `:include_unknown` is supported.
+- **Full-text search** over title and abstract, with `search`,
+  `search.exact` and the `<field>.search` filters, plus searches in
+  affiliation strings and author names. All words must match, quoted
+  phrases must appear in order, proximity (`"a"~N~"b"`, `"a b"~N`)
+  works, and wildcards work with `.exact`. Results are ranked by
+  `relevance_score` (BM25).
+- **Records** are returned as stored, including fields that are not
+  OpenAlex’s. You can use `select`, `sort`, `per_page`, `page`, `cursor`
+  and `sample`/`seed`, and look up single works by ID or DOI.
+
+## Differences from OpenAlex
+
+- **Local data:** counts come from the corpus, not from all of OpenAlex.
+- **Search** covers title and abstract only, because there is no full
+  text. The stemmer folds more word forms than OpenAlex’s, so stemmed
+  counts can be higher. Proximity allows up to N words between the
+  terms, an approximation of OpenAlex’s.
+- **Display names:** countries, languages and licenses use the code as
+  the display name in `group_by` results (“AU” rather than “Australia”).
+- **Unsupported features** get a clear HTTP 400 that names them:
+  OpenAlex collections, semantic search, `group_by` on several
+  dimensions, and OQL’s comparisons and nested queries. 156 of
+  OpenAlex’s 174 OQL example queries run locally
+  (`tools/oql_coverage.R`).
+
+See
+[`vignette("openalexAPI")`](https://openalexpro.github.io/openalexAPI/articles/openalexAPI.md)
+for the details.
+
+# Package index
+
+## Serving a corpus
+
+Prepare a Parquet corpus and serve it as an OpenAlex-compatible API.
+
+- [`serve_corpus()`](https://openalexpro.github.io/openalexAPI/reference/serve_corpus.md)
+  : Serve a corpus as an OpenAlex-compatible API
+- [`prepare_corpus()`](https://openalexpro.github.io/openalexAPI/reference/prepare_corpus.md)
+  : Prepare a Parquet corpus for serving
+
+## Query compiler
+
+- [`oqo_to_sql()`](https://openalexpro.github.io/openalexAPI/reference/oqo_to_sql.md)
+  : Compile an OQO into DuckDB SQL
+
+## Package
+
+- [`openalexAPI`](https://openalexpro.github.io/openalexAPI/reference/openalexAPI-package.md)
+  [`openalexAPI-package`](https://openalexpro.github.io/openalexAPI/reference/openalexAPI-package.md)
+  : openalexAPI: Local OpenAlex-Compatible Web API over a Parquet Corpus
+
+# Articles
+
+### All vignettes
+
+- [Querying a Local Corpus like
+  OpenAlex](https://openalexpro.github.io/openalexAPI/articles/openalexAPI.md):
