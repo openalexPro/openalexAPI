@@ -103,11 +103,15 @@ test_that("openalexPro downloads from the server like from OpenAlex", {
   con <- local_fixture_con()
   want <- sort(DBI::dbGetQuery(con, "SELECT id FROM works
     WHERE type = 'article' AND publication_year BETWEEN 1990 AND 2000")$id)
+  # 41 works at 10 per page: a download of 5 pages, cursor-paged by openalexPro
   q <- openalexPro::pro_query(entity = "works", type = "article",
-                              publication_year = "1990-2000", endpoint = url)
+                              publication_year = "1990-2000", endpoint = url,
+                              options = list(per_page = 10))
   for (via in c("url", "oqo")) {
     out <- withr::local_tempdir()
     openalexPro::pro_fetch(q, project_folder = out, via = via, progress = FALSE, verbose = FALSE)
+    pages <- list.files(out, "^results_page_[0-9]+\\.parquet$", recursive = TRUE)
+    expect_length(pages, ceiling(length(want) / 10))
     got <- DBI::dbGetQuery(con, sprintf(
       "SELECT id, abstract FROM read_parquet('%s/**/*.parquet')", out))
     expect_equal(sort(got$id), want, label = via)
@@ -161,4 +165,25 @@ test_that("`+` in a classic query means a space", {
   con <- local_fixture_con()
   expect_equal(call_api(url, "/?oql=works+where+type+is+article")$json$meta$count,
                n_sql(con, "type = 'article'"))
+})
+
+test_that("openalexPro downloads a sample spanning pages consistently", {
+  skip_on_cran()
+  skip_if_offline("api.openalex.org")
+  url <- local_server()
+  q <- openalexPro::pro_query(entity = "works", type = "article", endpoint = url,
+                              options = list(sample = 45, seed = 3, per_page = 10))
+  ids <- lapply(c("url", "oqo"), function(via) {
+    out <- withr::local_tempdir()
+    openalexPro::pro_fetch(q, project_folder = out, via = via, progress = FALSE,
+                           verbose = FALSE)
+    con <- DBI::dbConnect(duckdb::duckdb())
+    on.exit(DBI::dbDisconnect(con, shutdown = TRUE))
+    DBI::dbGetQuery(con, sprintf("SELECT id FROM read_parquet('%s/**/*.parquet')", out))$id
+  })
+  for (x in ids) {
+    expect_length(x, 45)
+    expect_false(anyDuplicated(x) > 0)
+  }
+  expect_setequal(ids[[1]], ids[[2]])
 })
