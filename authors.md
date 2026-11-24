@@ -8,7 +8,7 @@
 ## Citation
 
 Source:
-[`inst/CITATION`](https://github.com/openalexPro/openalexAPI/blob/main/inst/CITATION)
+[`inst/CITATION`](https://github.com/openalexPro/openalexAPI/blob/v0.1.0/inst/CITATION)
 
 Krug, R. M. (2026). openalexAPI: Local OpenAlex-Compatible Web API over
 a Parquet Corpus. R package version 0.1.0.
