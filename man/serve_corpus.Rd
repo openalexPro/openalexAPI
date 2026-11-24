@@ -40,7 +40,9 @@ and the download functions of openalexPro work against it unchanged:
 }
 \details{
 \itemize{
-\item \code{GET /works?filter=...&sort=...&per_page=...&cursor=...}
+\item \code{GET /works?filter=...&sort=...&per_page=...&cursor=...}, also with
+\verb{group_by=} (one dimension; \verb{:include_unknown} shows works without a
+value as the group \code{unknown})
 \item \code{GET /works/{id}} (any ID form, or a DOI)
 \item \code{GET /?oql=...} and \code{GET /?oqo=...}, \verb{POST /} with \code{oqo} or \code{oql} and the
 view parameters \code{select}, \code{sort}, \code{per_page}, \code{page}, \code{cursor}
