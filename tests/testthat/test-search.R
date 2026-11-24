@@ -89,3 +89,21 @@ test_that("unsupported search input is a 400", {
   expect_match(err(list(list(column_id = "fulltext.search", value = "x", operator = ">"))),
                "Operator")
 })
+
+test_that("a deep tree of many search terms runs in reasonable time", {
+  # systematic-review strategies have 100+ terms in nested AND/OR groups; a
+  # per-work BM25 call per term did not finish in minutes
+  con <- local_fixture_con()
+  words <- c("forest", "climate", "carbon", "water", "policy", "land", "species",
+             "tropical", "energy", "health", "soil", "river", "urban", "fire", "ocean",
+             "coral", "biodiversity", "emission", "agriculture", "conservation")
+  group <- function(ws) list(join = "or", filters = lapply(ws, function(w) has("fulltext.search", w)))
+  tree <- list(list(join = "and", filters = list(
+    group(words), group(rev(words)),
+    list(join = "or", filters = list(group(words[1:10]), group(words[11:20]),
+                                     has("fulltext.search", '"tropical forest"')))
+  )))
+  t <- system.time(n <- n_oqo(con, tree))[["elapsed"]]
+  expect_lt(t, 60)
+  expect_equal(n, n_oqo(con, list(group(words))))
+})
