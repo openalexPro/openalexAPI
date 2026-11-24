@@ -11,7 +11,8 @@
 #' * `GET /?oql=...` and `GET /?oqo=...`, `POST /` with `oqo` or `oql` and the
 #'   view parameters `select`, `sort`, `per_page`, `page`, `cursor`
 #' * `POST /query`: forwarded to OpenAlex (translation)
-#' * `GET /corpus`: what is served
+#' * `GET /corpus`: what is served (filters, group_by columns)
+#' * `/`: a web page for running queries in the browser (`/www/index.html`)
 #'
 #' Classic URLs and OQL are translated to OQO by OpenAlex's free `/query`
 #' endpoint (the network is needed, no credits are spent); an OQO runs fully
@@ -154,17 +155,18 @@ serve_corpus <- function(
         works = DBI::dbGetQuery(ctx$con, "SELECT count(*) AS n FROM works")$n,
         columns = ctx$served,
         filters = sort(names(reg)[ok]),
-        filters_unavailable = sort(names(reg)[!ok])
+        filters_unavailable = sort(names(reg)[!ok]),
+        group_by = intersect(names(.api_groups_works()), names(reg)[ok])
       )))
     }), serializers = raw) |>
     plumber2::api_get("/", guard(function(request, response, ...) {
       q <- query_of(request)
       view <- q[intersect(names(q), .api_view_params)]
       if (is.null(q$oql) && is.null(q$oqo)) {
-        return(json_ok(response, .api_json(list(
-          message = "openalexAPI: an OpenAlex-compatible API over a local corpus.",
-          corpus = ctx$corpus, see = "/corpus"
-        ))))
+        # the web page; `/` itself stays JSON-only for API clients
+        response$status <- 302L
+        response$set_header("Location", "/www/index.html")
+        return("")
       }
       run(request, response, q[intersect(names(q), c("oql", "oqo"))], view)
     }), serializers = raw) |>
@@ -179,5 +181,6 @@ serve_corpus <- function(
     plumber2::api_post("/query", guard(function(request, response, ...) {
       fwd <- .api_forward_query(body_of(request), ctx$root, key_of(request))
       json_ok(response, fwd$body, fwd$status)
-    }), serializers = raw)
+    }), serializers = raw) |>
+    plumber2::api_assets("/www", system.file("www", package = "openalexAPI"))
 }

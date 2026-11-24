@@ -21,6 +21,10 @@
   no `results`), sorted by count or key, paged; `:include_unknown` adds the
   works without a value. Countries, languages and licenses show the code as
   display name (OpenAlex shows the full name).
+- A web page at `/` (served from `inst/www`, no build step): search and
+  filters or OQL, `group_by` as bars (a click narrows the filters to that
+  group), records with authors and relevance, paging, the translated OQL, and
+  "Copy API URL" for `openalexPro::pro_fetch()`. Light and dark, phone width.
 - Parquet files that hold no works (e.g. snowball edges, collection
   `members/`) are skipped; a sample spanning pages is the same on every page;
   `GET /works/{id}` also takes a DOI and `select`.
