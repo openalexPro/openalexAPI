@@ -128,6 +128,9 @@ delete `README.html`.
 ## Branching
 
 - `claude/<description>` branches from `dev`; merge into `dev`; `main` gets release commits only.
+- Public since 0.1.0 (alpha). Not on the openalexPro r-universe (it is not in the r-universe
+  registry; add it there only when it leaves alpha); installed from GitHub. Listed on the org
+  landing page (openalexpro.github.io) and org profile (dot-github) as Alpha.
 - Stacked PRs, merge in order: #1 filters, #2 group_by, #3 search, #4 page, #5 docs,
   #6 performance, #7 more filters (lineage, funders, affiliation/author search, proximity, ...).
 
