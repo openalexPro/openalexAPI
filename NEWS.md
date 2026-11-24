@@ -1,4 +1,6 @@
-# openalexAPI (development version)
+# openalexAPI 0.1.0
+
+First version (alpha): not on r-universe, installed from GitHub.
 
 - 15 more filters, from OpenAlex's own OQL examples (`tools/oql_coverage.R`):
   `authorships.institutions.lineage`, `authorships.author.orcid`,

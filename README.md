@@ -3,6 +3,26 @@
 
 # openalexAPI
 
+<!-- badges: start -->
+
+[![Status:
+alpha](https://img.shields.io/badge/status-alpha-red.svg)](https://github.com/openalexPro/openalexAPI)
+[![main](https://img.shields.io/github/r-package/v/openalexPro/openalexAPI/main?label=main)](https://github.com/openalexPro/openalexAPI/tree/main)
+[![CI
+main](https://img.shields.io/github/actions/workflow/status/openalexPro/openalexAPI/R-CMD-check.yaml?branch=main&label=CI%20main)](https://github.com/openalexPro/openalexAPI/actions/workflows/R-CMD-check.yaml?query=branch%3Amain)
+[![dev](https://img.shields.io/github/r-package/v/openalexPro/openalexAPI/dev?label=dev)](https://github.com/openalexPro/openalexAPI/tree/dev)
+[![CI
+dev](https://img.shields.io/github/actions/workflow/status/openalexPro/openalexAPI/R-CMD-check.yaml?branch=dev&label=CI%20dev)](https://github.com/openalexPro/openalexAPI/actions/workflows/R-CMD-check.yaml?query=branch%3Adev)
+[![License:
+MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Docs](https://img.shields.io/badge/docs-pkgdown-blue)](https://openalexpro.github.io/openalexAPI/)
+<!-- badges: end -->
+
+> **Alpha.** openalexAPI works and is tested, but its functions,
+> arguments and the details of its responses may still change between
+> versions. It is not on the openalexPro r-universe yet; install it from
+> GitHub.
+
 **openalexAPI** serves a local Parquet corpus of OpenAlex works through
 a web API that answers like the [OpenAlex
 API](https://api.openalex.org). You can run the same queries against
@@ -25,12 +45,20 @@ It is meant for **project-sized corpora**, not the whole snapshot.
 
 ## Installation
 
-The repository is private for now, so install from GitHub with a token
-that can read it:
+openalexAPI is not on the openalexPro r-universe yet. Install it from
+GitHub; its dependencies, openalexPro included, come along:
 
 ``` r
 # install.packages("pak")
-pak::pak("openalexPro/openalexAPI")
+pak::pak("openalexPro/openalexAPI")       # main: the current alpha version
+pak::pak("openalexPro/openalexAPI@dev")   # dev: the newest changes
+```
+
+Or with remotes:
+
+``` r
+# install.packages("remotes")
+remotes::install_github("openalexPro/openalexAPI")
 ```
 
 ## Quick start
