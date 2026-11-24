@@ -11,7 +11,22 @@ navbar:
   left:
     - icon: fa-home
       href: index.html
+    - text: "Get Started"
+      href: articles/openalexAPI.html
     - text: "Reference"
       href: reference/index.html
     - text: "Changelog"
       href: news/index.html
+
+reference:
+  - title: "Serving a corpus"
+    desc: "Prepare a Parquet corpus and serve it as an OpenAlex-compatible API."
+    contents:
+      - serve_corpus
+      - prepare_corpus
+  - title: "Query compiler"
+    contents:
+      - oqo_to_sql
+  - title: "Package"
+    contents:
+      - openalexAPI-package

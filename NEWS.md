@@ -1,5 +1,7 @@
 # openalexAPI (development version)
 
+- Documentation: README, `vignette("openalexAPI")`, pkgdown site config,
+  `CITATION` / `CITATION.cff` / `.zenodo.json`.
 - `prepare_corpus()` reads a Parquet corpus into a cached DuckDB database:
   one row per work, IDs and DOIs matched in any form, the abstract as text,
   and `abstract_inverted_index` rebuilt for corpora from the JSONL path.

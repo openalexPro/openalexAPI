@@ -5,3 +5,7 @@
 ^TODO\.md$
 ^_pkgdown\.yml$
 ^tools$
+^README\.Rmd$
+^CITATION\.cff$
+^\.zenodo\.json$
+^vignettes/.*\.html$

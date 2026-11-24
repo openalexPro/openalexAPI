@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "openalexAPI: Local OpenAlex-Compatible Web API over a Parquet Corpus"
+authors:
+  - family-names: Krug
+    given-names: Rainer M
+    orcid: "https://orcid.org/0000-0002-7490-0066"
+license: MIT
+repository-code: "https://github.com/openalexPro/openalexAPI"
+url: "https://openalexpro.github.io/openalexAPI/"
+keywords: [OpenAlex, bibliometrics, R, API, OQL, Parquet, DuckDB]
+references:
+  - type: software
+    title: "The openalexPro ecosystem: R packages for large-scale work with OpenAlex"
+    authors:
+      - family-names: Krug
+        given-names: Rainer M
+        orcid: "https://orcid.org/0000-0002-7490-0066"
+    url: "https://openalexpro.github.io/"
+  - type: software
+    title: "openalexPro: Providing a more advanced access to OpenAlex for the power user"
+    authors:
+      - family-names: Krug
+        given-names: Rainer M
+        orcid: "https://orcid.org/0000-0002-7490-0066"
+    doi: 10.5281/zenodo.17453180
