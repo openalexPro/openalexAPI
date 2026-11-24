@@ -1,0 +1,31 @@
+Package: openalexAPI
+Title: Local OpenAlex-Compatible Web API over a Parquet Corpus
+Version: 0.0.0.9000
+Authors@R:
+    person("Rainer M", "Krug", , "Rainer@krugs.de", role = c("aut", "cre"),
+           comment = c(ORCID = "0000-0002-7490-0066"))
+Description: Serves a local Parquet corpus of OpenAlex works through a web
+    API that answers like the OpenAlex '/works' endpoint, so the same
+    classic filter URLs, OQL (OpenAlex Query Language) and OQO (OpenAlex
+    Query Object) queries, including 'group_by', can be run against local
+    data. Queries are translated to OQO by the free OpenAlex '/query'
+    endpoint and compiled locally to DuckDB SQL. A small static web page is
+    included for running searches in the browser.
+License: MIT + file LICENSE
+URL: https://github.com/openalexPro/openalexAPI, https://openalexpro.github.io/openalexAPI/
+BugReports: https://github.com/openalexPro/openalexAPI/issues
+Additional_repositories: https://openalexpro.r-universe.dev
+Encoding: UTF-8
+Depends:
+    R (>= 4.1.0)
+Imports:
+    DBI,
+    duckdb
+Suggests:
+    callr,
+    testthat (>= 3.0.0),
+    vcr,
+    withr
+Config/testthat/edition: 3
+Roxygen: list(markdown = TRUE)
+Config/roxygen2/version: 8.1.1

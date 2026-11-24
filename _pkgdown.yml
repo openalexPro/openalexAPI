@@ -1,0 +1,17 @@
+url: https://openalexpro.github.io/openalexAPI
+
+template:
+  bootstrap: 5
+
+home:
+  title: "openalexAPI -- Local OpenAlex-Compatible API"
+  description: "Run OpenAlex filter, OQL and OQO queries, including group_by, against a local Parquet corpus."
+
+navbar:
+  left:
+    - icon: fa-home
+      href: index.html
+    - text: "Reference"
+      href: reference/index.html
+    - text: "Changelog"
+      href: news/index.html
