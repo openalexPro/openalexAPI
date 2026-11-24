@@ -120,3 +120,8 @@ test_that("filter columns whose type differs between files are cast back", {
   expect_type(r$results[[1]]$cited_by_count, "integer")
   expect_type(r$results[[1]]$publication_year, "integer")
 })
+
+test_that("structs that differ only in field order are not reported", {
+  # corpus_jq's two files have `ids` with the fields in different order
+  expect_no_message(prepare_corpus(fixture("corpus_jq"), cache_dir = withr::local_tempdir()))
+})
