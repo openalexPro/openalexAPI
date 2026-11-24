@@ -184,3 +184,12 @@ test_that("the added group_by columns", {
   issn <- counts(grouped(con, "primary_location.source.issn"))
   expect_false(any(grepl("^https://", names(issn))))
 })
+
+test_that("publisher groups carry the publishers' names", {
+  con <- local_fixture_con()
+  g <- grouped(con, "primary_location.source.publisher_lineage")$group_by
+  expect_gt(length(g), 0)
+  named <- vapply(g, function(x) !identical(x$key_display_name, x$key), TRUE)
+  expect_true(any(named))
+  expect_equal(grouped(con, "primary_location.source.host_organization_lineage")$group_by, g)
+})

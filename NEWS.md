@@ -1,6 +1,6 @@
 # openalexAPI (development version)
 
-- 16 more filters, from OpenAlex's own OQL examples (`tools/oql_coverage.R`):
+- 15 more filters, from OpenAlex's own OQL examples (`tools/oql_coverage.R`):
   `authorships.institutions.lineage`, `authorships.author.orcid`,
   `funders.id`, `publication_date`, `from_created_date` / `to_created_date`,
   `citation_normalized_percentile.value` / `.is_in_top_1_percent` /
@@ -10,7 +10,10 @@
   `primary_topic.subfield.id`; `group_by` on those OpenAlex can group by.
 - Search in affiliation strings and author names
   (`raw_affiliation_strings.search[.exact]`, `raw_author_name.search[.exact]`),
-  and proximity search (`"a"~N~"b"`, `"a b"~N`).
+  and proximity search (`"a"~N~"b"`, chains with a distance per pair,
+  `"a b"~N`; N up to 1000). Phrases and proximity in the stemmed search
+  columns match word stems (`"coral reefs"` also finds "coral reef").
+- `group_by` on publisher lineage shows the publishers' names.
 - Coverage: 156 of OpenAlex's 174 OQL example queries run locally (was 115);
   the rest need collections, semantic search, multi-dimension `group_by`,
   comparisons or nested queries. Live comparison with OpenAlex

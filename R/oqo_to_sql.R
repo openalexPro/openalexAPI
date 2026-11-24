@@ -160,10 +160,18 @@ oqo_to_sql <- function(oqo, con, columns = NULL) {
 #' @keywords internal
 #' @noRd
 .api_run_prelude <- function(con, sql) {
-  for (stmt in sql$prelude) .api_get(con, stmt, exec = TRUE)
-  function() {
+  drop <- function() {
     for (t in sql$temp) DBI::dbExecute(con, paste("DROP TABLE IF EXISTS", t))
   }
+  # a failing statement must not leave the tables made before it behind
+  tryCatch(
+    for (stmt in sql$prelude) .api_get(con, stmt, exec = TRUE),
+    error = function(e) {
+      drop()
+      stop(e)
+    }
+  )
+  drop
 }
 
 #' The group_by dimension: column, its `{k, d}` list SQL, include_unknown

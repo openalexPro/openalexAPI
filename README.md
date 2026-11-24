@@ -76,7 +76,7 @@ without network access.
 
 ## What is supported
 
-- **49 works filters:** type, year and dates (also the creation date),
+- **48 works filters:** type, year and dates (also the creation date),
   language, open access, citations and percentiles, authors and ORCIDs,
   institutions (also with their lineage), countries, funders, sources,
   ISSNs, publishers, topics down to subfields, keywords, SDGs, IDs

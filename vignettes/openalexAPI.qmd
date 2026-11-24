@@ -274,8 +274,11 @@ The differences from OpenAlex:
 
 - the stemmer (Porter) folds more word forms than OpenAlex's, so stemmed
   counts can be higher; exact searches are closer;
-- proximity is "up to N words between the terms", an approximation of
-  OpenAlex's slop;
+- proximity is "up to N words between the terms" (N up to 1000), an
+  approximation of OpenAlex's slop; in a chain (`"a"~3~"b"~2~"c"`) each pair
+  has its distance;
+- in the stemmed searches, phrases and proximity match word stems
+  (`"coral reefs"` also finds "coral reef");
 - affiliation and author-name searches match whole words, without
   stemming, and add nothing to `relevance_score`. As in OpenAlex, unquoted
   words may come from different affiliations of a work, a quoted phrase must
@@ -299,19 +302,21 @@ and at phone width.
 
 # Using the compiler directly
 
-`oqo_to_sql()` turns an OQO into the SQL that runs against the database of a
-prepared corpus:
+`oqo_to_sql()` shows the SQL a query becomes:
 
 ```{r}
-db <- prepare_corpus("my_project/parquet")
-con <- DBI::dbConnect(duckdb::duckdb(), dbdir = db, read_only = TRUE)
-DBI::dbExecute(con, "LOAD fts")
+con <- DBI::dbConnect(duckdb::duckdb())
 s <- oqo_to_sql(list(get_rows = "works", filter_rows = list(
-  list(column_id = "type", value = "article")
+  list(column_id = "type", value = "article"),
+  list(column_id = "fulltext.search", value = "coral bleaching", operator = "has")
 )), con)
-s$where
+s$prelude # run first: each search term's matches, as a temp table
+s$where   # the condition on the `works` table
+s$score   # the relevance score
 ```
 
-The SQL uses helper columns and macros (`id_key()`, `doi_key()`) that
-`serve_corpus()` sets up. Use it to see what a query does, rather than as a
-general SQL generator.
+The connection is used to quote values and to stem words. The SQL refers to the database
+`prepare_corpus()` builds, its helper columns, and the `id_key()` /
+`doi_key()` macros and full-text indexes that `serve_corpus()` loads, and a
+search's `where` refers to the temp tables its `prelude` creates. Use it to
+see what a query does; to run queries, use the server.

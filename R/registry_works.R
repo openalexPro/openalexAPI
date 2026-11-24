@@ -294,10 +294,11 @@
     "primary_location.source.type" = one(pre("source-types", "primary_location.source.type"),
                                          "primary_location.source.type"),
     "primary_location.source.issn" = many("primary_location.source.issn", "x"),
+    # publishers with their names (oaapi_publishers, built by prepare_corpus())
     "primary_location.source.host_organization_lineage" = many(
-      "primary_location.source.host_organization_lineage", "x", id = TRUE),
+      "oaapi_publishers", "x.id", "coalesce(x.name, x.id)", id = TRUE),
     "primary_location.source.publisher_lineage" = many(
-      "primary_location.source.host_organization_lineage", "x", id = TRUE),
+      "oaapi_publishers", "x.id", "coalesce(x.name, x.id)", id = TRUE),
     "primary_topic.subfield.id" = one("primary_topic.subfield.id",
                                       "primary_topic.subfield.display_name", id = TRUE),
     "primary_topic.id" = one("primary_topic.id", "primary_topic.display_name", id = TRUE),

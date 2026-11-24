@@ -215,3 +215,13 @@ test_that("affiliation and author-name search: words across strings, phrases wit
   name <- n_sql(con, "regexp_matches(array_to_string(list_filter(list_transform(authorships, lambda a: a.raw_author_name), lambda x: x IS NOT NULL), ' | '), '(?i)\\bsmith\\b')")
   expect_equal(n_oqo(con, list(has("raw_author_name.search", "smith"))), name)
 })
+
+test_that("a failing prelude statement drops the tables made before it", {
+  con <- local_fixture_con()
+  sql <- list(prelude = c("CREATE OR REPLACE TEMP TABLE oaapi_s1 AS SELECT 1 AS i",
+                          "CREATE OR REPLACE TEMP TABLE oaapi_s2 AS SELECT no_such_column FROM works"),
+              temp = c("oaapi_s1", "oaapi_s2"))
+  expect_error(openalexAPI:::.api_run_prelude(con, sql))
+  left <- DBI::dbGetQuery(con, "SELECT table_name FROM duckdb_tables() WHERE temporary")$table_name
+  expect_false(any(c("oaapi_s1", "oaapi_s2") %in% left))
+})

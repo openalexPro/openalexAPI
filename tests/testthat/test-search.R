@@ -139,3 +139,36 @@ test_that("proximity: terms within N words, any order or (classic) in order", {
   expect_gt(one, 0)
   expect_equal(n_oqo(con, list(has("raw_affiliation_strings.search.exact", '"columbia"~2~"university"'))), one)
 })
+
+test_that("proximity: chains with a distance per pair; distances are capped", {
+  con <- local_fixture_con()
+  p <- openalexAPI:::.api_search_parse('"a"~3~"b"~2~"c" "x"~4~"y"~"z"', "f", TRUE)$prox
+  expect_equal(p[[1]]$terms, c("a", "b", "c"))
+  expect_equal(p[[1]]$n, c(3L, 2L))
+  expect_equal(p[[2]]$n, c(4L, 4L)) # a pair without a number takes the previous one
+  ex <- "fulltext.search.exact"
+  pair <- function(a, b, n) {
+    g <- sprintf("\\W+(?:\\w+\\W+){0,%d}", n)
+    sprintf("regexp_matches(concat_ws(' ', oaapi_title, oaapi_abstract), '(?i)\\b(?:%s%s%s|%s%s%s)\\b')",
+            a, g, b, b, g, a)
+  }
+  want <- n_sql(con, paste(pair("tropical", "deforestation", 3), "AND", pair("deforestation", "climate", 6)))
+  expect_equal(n_oqo(con, list(has(ex, '"tropical"~3~"deforestation"~6~"climate"'))), want)
+  expect_error(n_oqo(con, list(has(ex, '"a"~5000~"b"'))), "0 to 1000")
+})
+
+test_that("stemmed phrases and proximity match word stems", {
+  con <- local_fixture_con()
+  st <- "fulltext.search"
+  plural <- n_oqo(con, list(has(st, '"tropical forests"')))
+  singular <- n_oqo(con, list(has(st, '"tropical forest"')))
+  expect_equal(plural, singular)
+  expect_gt(plural, n_oqo(con, list(has("fulltext.search.exact", '"tropical forests"'))))
+  expect_equal(n_oqo(con, list(has(st, '"forests"~3~"tropical"'))),
+               n_oqo(con, list(has(st, '"forest"~3~"tropical"'))))
+  # works on a plain connection too (stem() needs the fts extension)
+  plain <- DBI::dbConnect(duckdb::duckdb())
+  on.exit(DBI::dbDisconnect(plain, shutdown = TRUE))
+  s <- oqo_to_sql(list(get_rows = "works", filter_rows = list(has(st, '"tropical forests"'))), plain)
+  expect_match(s$where, "tropic")
+})

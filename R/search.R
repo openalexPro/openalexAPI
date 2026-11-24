@@ -89,14 +89,26 @@
     .api_abort(sprintf("`%s` needs search terms.", column))
   }
   # proximity, taken out first:
-  #   "a"~N~"b"[~"c"]  terms within N words of each other, any order (OQL v2)
-  #   "a b"~N          the phrase's words in order, up to N words between them
+  #   "a"~N~"b"[~M~"c"]  each term within N (then M, ...) words of the next,
+  #                      any order (OQL v2); a pair without a number takes the
+  #                      previous one
+  #   "a b"~N            the phrase's words in order, up to N words between them
   prox <- list()
-  chain <- '"[^"]*"~[0-9]+(~"[^"]*")+'
+  chain <- '"[^"]*"~[0-9]+~"[^"]*"((~[0-9]+)?~"[^"]*")*'
   for (m in regmatches(v, gregexpr(chain, v))[[1]]) {
-    prox[[length(prox) + 1L]] <- list(
-      terms = gsub('"', "", regmatches(m, gregexpr('"[^"]*"', m))[[1]]),
-      n = as.integer(sub('^"[^"]*"~([0-9]+).*', "\\1", m)), ordered = FALSE)
+    tok <- regmatches(m, gregexpr('"[^"]*"|~[0-9]+', m))[[1]]
+    terms <- character(0)
+    n <- integer(0)
+    last <- NA_integer_
+    for (t in tok) {
+      if (startsWith(t, "~")) {
+        last <- as.integer(sub("~", "", t))
+      } else {
+        if (length(terms)) n <- c(n, last)
+        terms <- c(terms, gsub('"', "", t))
+      }
+    }
+    prox[[length(prox) + 1L]] <- list(terms = terms, n = n, ordered = FALSE)
   }
   v <- gsub(chain, " ", v)
   for (m in regmatches(v, gregexpr('"[^"]*"~[0-9]+', v))[[1]]) {
@@ -105,6 +117,10 @@
       n = as.integer(sub(".*~", "", m)), ordered = TRUE)
   }
   v <- gsub('"[^"]*"~[0-9]+', " ", v)
+  # the regex engine allows at most 1000 repetitions
+  if (any(unlist(lapply(prox, `[[`, "n")) > 1000L)) {
+    .api_abort("A proximity distance (`~N`) must be from 0 to 1000.")
+  }
   if (any(grepl("[*?]", unlist(lapply(prox, `[[`, "terms")))) && !exact) {
     .api_abort("Wildcards need the exact search (`search.exact`).")
   }
@@ -127,11 +143,21 @@
 }
 
 #' Regex for one search term (a word or phrase, `*` / `?` wildcards)
+#'
+#' `stem`: a function giving each word's stem, for the stemmed search
+#' columns: a word then matches its stem plus any ending (`reefs` -> `reef\\w*`
+#' matches reef, reefs), so phrase and proximity checks agree with the
+#' stemmed BM25 match. Wildcard words are used as written.
 #' @keywords internal
 #' @noRd
-.api_term_re <- function(term) {
-  w <- .api_re_escape(strsplit(trimws(term), "\\s+")[[1]])
+.api_term_re <- function(term, stem = NULL) {
+  words <- strsplit(trimws(term), "\\s+")[[1]]
+  wild <- grepl("[*?]", words)
+  w <- words
+  if (!is.null(stem) && any(!wild)) w[!wild] <- stem(words[!wild])
+  w <- .api_re_escape(w)
   w <- gsub("\\\\\\*", "\\\\w*", gsub("\\\\\\?", "\\\\w", w))
+  if (!is.null(stem)) w[!wild] <- paste0(w[!wild], "\\w*")
   paste(w, collapse = "\\W+")
 }
 
@@ -141,15 +167,32 @@
 #' ("a b"~N): all words in order. An approximation of Lucene slop.
 #' @keywords internal
 #' @noRd
-.api_prox_re <- function(p) {
-  gap <- paste0("\\W+(?:\\w+\\W+){0,", p$n, "}")
-  t <- vapply(p$terms, .api_term_re, "")
+.api_prox_re <- function(p, stem = NULL) {
+  gap <- function(n) paste0("\\W+(?:\\w+\\W+){0,", n, "}")
+  t <- vapply(p$terms, .api_term_re, "", stem = stem)
   if (p$ordered) {
-    return(paste0("\\b", paste(t, collapse = gap), "\\b"))
+    return(paste0("\\b", paste(t, collapse = gap(p$n[[1]])), "\\b"))
   }
   vapply(seq_len(length(t) - 1L), function(i) {
-    paste0("\\b(?:", t[i], gap, t[i + 1], "|", t[i + 1], gap, t[i], ")\\b")
+    g <- gap(p$n[[i]])
+    paste0("\\b(?:", t[i], g, t[i + 1], "|", t[i + 1], g, t[i], ")\\b")
   }, "")
+}
+
+#' Porter stems of words, from DuckDB's FTS `stem()` (the stemmer of the index)
+#' @keywords internal
+#' @noRd
+.api_stemmer <- function(con) {
+  # stem() comes with the fts extension; loaded already on the server's
+  # connection, not necessarily on one passed to oqo_to_sql()
+  tryCatch(DBI::dbExecute(con, "LOAD fts"),
+           error = function(e) DBI::dbExecute(con, "INSTALL fts; LOAD fts"))
+  function(words) {
+    vapply(words, function(w) {
+      DBI::dbGetQuery(con, paste0("SELECT stem(", DBI::dbQuoteLiteral(con, tolower(w)),
+                                  ", 'porter') AS s"))$s
+    }, "", USE.NAMES = FALSE)
+  }
 }
 
 #' A regex-escaped word
@@ -193,17 +236,16 @@
                  DBI::dbQuoteLiteral(con, paste(terms, collapse = " ")),
                  ", fields := '", fields, "', conjunctive := 1)")
         },
-        regex = c(
-          vapply(p$phrases, function(ph) {
-            w <- .api_re_escape(strsplit(trimws(ph), "\\s+")[[1]])
-            regex(paste0("\\b", paste(w, collapse = "\\W+"), "\\b"), con)
-          }, ""),
-          vapply(p$wild, function(w) {
-            re <- gsub("\\\\\\*", "\\\\w*", gsub("\\\\\\?", "\\\\w", .api_re_escape(w)))
-            regex(paste0("\\b", re, "\\b"), con)
-          }, ""),
-          vapply(unlist(lapply(p$prox, .api_prox_re)), regex, "", con = con)
-        )
+        regex = {
+          stem <- if (!exact) .api_stemmer(con)
+          c(
+            vapply(p$phrases, function(ph) {
+              regex(paste0("\\b", .api_term_re(ph, stem), "\\b"), con)
+            }, ""),
+            vapply(p$wild, function(w) regex(paste0("\\b", .api_term_re(w), "\\b"), con), ""),
+            vapply(unlist(lapply(p$prox, .api_prox_re, stem = stem)), regex, "", con = con)
+          )
+        }
       )
     }
   )
