@@ -41,6 +41,8 @@
     oqo$sort_by <- .api_parse_sort(view$sort) # a sibling `sort` wins
   }
   sql <- oqo_to_sql(oqo, con, ctx$columns)
+  drop_temp <- .api_run_prelude(con, sql) # search terms, computed once
+  on.exit(drop_temp(), add = TRUE)
   if (!is.null(sql$group)) {
     if (!is.null(oqo$sample)) .api_abort("`sample` cannot be combined with `group_by`.")
     return(.api_execute_groups(ctx, oqo, sql, view, oql, t0))

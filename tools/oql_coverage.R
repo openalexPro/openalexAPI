@@ -14,11 +14,7 @@
 # Run from the package root:  Rscript tools/oql_coverage.R
 # Needs: network (one download of corpus.yaml, from GitHub), yaml, pkgload.
 # Writes: tools/oql_coverage.csv (one row per example).
-#
-# Known issue (open): one of the examples runs for minutes on the 369-work
-# test corpus, so a full run does not finish in reasonable time yet. Likely
-# one of the long systematic-review strategies (up to 114 search leaves, each
-# a BM25 lookup per work); to be identified and fixed in openalexAPI.
+
 
 pkgload::load_all(quiet = TRUE)
 

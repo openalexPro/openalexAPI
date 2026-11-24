@@ -69,6 +69,12 @@ OQO --> oqo_to_sql() (registry) --> .api_execute() / .api_execute_groups() --> J
 - **Search**: two FTS tables (`oaapi_docs_stem` Porter + English stop words, `oaapi_docs_exact`
   none), conjunctive BM25 (OpenAlex ANDs words, checked live), phrases and wildcards as regex
   on `oaapi_title`/`oaapi_abstract`; `relevance_score` = sum over non-negated search leaves.
+- **Search terms are computed once per request** (`oqo_to_sql()$prelude`, run by
+  `.api_run_prelude()`): each BM25 query into a temp table `oaapi_s<n>(i, s)`, the leaf is
+  `oaapi_id IN (SELECT i FROM oaapi_s<n>)`, the score one lookup in `oaapi_score`. Never put
+  `match_bm25()` per work into the WHERE or ORDER BY: on 11,000 works a 20-term OR took 21 s
+  that way (now 0.3 s) and OpenAlex's 114-term example did not finish (now 1.7 s). Anything
+  that runs an `oqo_to_sql()` result must run its prelude first.
 - **Samples** must be identical on every page: always seeded (from the query if none), input
   ordered by `oaapi_id`, `SET threads = 1` for the query.
 - **Grouped requests** run the filter once into temp tables (`oaapi_m`, `oaapi_g`); fine on the
@@ -82,6 +88,14 @@ OQO --> oqo_to_sql() (registry) --> .api_execute() / .api_execute_groups() --> J
   `autoinstall_known_extensions` is FALSE, so autoloading fails on fresh CI runners.
 - Lambdas use the new syntax `lambda x: …`; the arrow form `x -> …` is an error in duckdb 2.0.
 - `SELECT * EXCLUDE (...) REPLACE (...)`: EXCLUDE comes first.
+
+## Speed
+
+`tools/benchmark.R` downloads an ~11,000-work corpus once and times every feature (filters,
+paging, sample, every `group_by`, all search forms, the 114-term example); run it after
+changes to the compiler or execution. On 11,000 works everything is under 0.35 s except the
+114-term search (1.7 s); building the database takes ~2 s. Costs grow about linearly with the
+number of works.
 
 ## Common Commands
 
