@@ -1,0 +1,305 @@
+---
+title: "Querying a Local Corpus like OpenAlex"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    embed-resources: true
+vignette: >
+  %\VignetteIndexEntry{Querying a Local Corpus like OpenAlex}
+  %\VignetteEngine{quarto::html}
+  %\VignetteEncoding{UTF-8}
+execute:
+  cache: false
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  eval = FALSE
+)
+```
+
+# Introduction
+
+A project corpus downloaded with openalexPro (or extracted from the OpenAlex
+snapshot) is a folder of Parquet files. You could query it with SQL, but you
+already know how to ask OpenAlex for what you want: filters, search, OQL,
+`group_by`. **openalexAPI** lets you ask your local corpus the same questions,
+in the same languages, and get the same kind of answers.
+
+`serve_corpus()` starts a local web server that behaves like
+`https://api.openalex.org` for the works in your corpus:
+
+- the query languages are exactly OpenAlex's. Classic URLs and OQL are
+  translated by OpenAlex's own (free) `/query` endpoint into an OQO, which is
+  then run locally;
+- the responses have OpenAlex's shape, so openalexPro downloads from the local
+  server as from OpenAlex. You can filter a large corpus into a smaller one,
+  or group it, without spending credits;
+- a web page runs the queries in the browser.
+
+# Preparing a corpus
+
+```{r}
+library(openalexAPI)
+db <- prepare_corpus("my_project/parquet")
+```
+
+`prepare_corpus()` reads every Parquet file below the folder into one DuckDB
+database and caches it under `tools::R_user_dir("openalexAPI", "cache")`. It
+is rebuilt only when the files change (paths, sizes, modification times) or a
+new version of openalexAPI changes the layout. `serve_corpus()` calls it, so
+you rarely need it yourself, except to build the database ahead of time for a
+large corpus.
+
+What it accepts and does:
+
+- **Any works corpus.** That includes the output of
+  `openalexPro::pro_request_parquet()` / `pro_fetch()`, the older JSONL path
+  (which keeps `abstract` but not `abstract_inverted_index`), snapshot
+  extractions, and other sources with the OpenAlex works schema.
+- **Only files that hold works** (an `id` and a `title` or `display_name`).
+  Other tables in the folder, such as openalexSnowball edges or the `members/`
+  of a collection, are skipped with a message.
+- **One record per work.** Works repeated across `query=` partitions are
+  served once, and hive partition columns are not read.
+- **IDs and DOIs in any form.** `https://openalex.org/W123`, `W123`, `w123`
+  and other prefixes (`ABC123`) all match each other; so do
+  `https://doi.org/10.…`, `doi:10.…` and `10.…`.
+- **Abstracts.** The abstract text is indexed for search.
+  `abstract_inverted_index` is served as in OpenAlex, and rebuilt from
+  `abstract` for corpora that only have the text.
+- **Mixed types.** A column whose type differs between files (a number in one
+  download, text in another) is reported. The columns that filters compare as
+  numbers, dates or booleans are converted back, with a count of values that
+  could not be read.
+- **Extra columns** that are not OpenAlex fields are served as they are, and
+  can be selected, but not filtered on.
+
+# Serving
+
+```{r}
+serve_corpus("my_project/parquet", port = 8000)
+```
+
+The server blocks the R session. Run it in a terminal
+(`Rscript -e 'openalexAPI::serve_corpus("my_project/parquet")'`) or in a
+background process to keep working in R:
+
+```{r}
+srv <- callr::r_bg(function() openalexAPI::serve_corpus("my_project/parquet", port = 8000))
+# ... later
+srv$kill()
+```
+
+By default the server listens on `127.0.0.1`, so it is reachable only from your
+computer. Another `host` makes the corpus available on the network, and you
+get a warning. Requests are handled one at a time.
+
+Classic URLs and OQL need the network for translation: OpenAlex's `/query` is
+free and costs no credits. A query sent as an OQO runs fully offline.
+
+# Asking questions
+
+## Classic URLs
+
+The `/works` endpoint takes OpenAlex's parameters:
+
+```
+/works?filter=type:article,publication_year:>2015
+/works?filter=authorships.countries:ch|de,type:!dataset&sort=cited_by_count:desc
+/works?search=coral bleaching&filter=open_access.is_oa:true
+/works?filter=primary_topic.id:null              (works without a primary topic)
+/works?filter=type:article&group_by=publication_year
+/works?select=id,display_name,doi&per_page=200&cursor=*
+/works/W2741809807                               (or a DOI: /works/10.7717/peerj.4375)
+```
+
+The filter names are OpenAlex's, aliases included (`is_oa`, `cites`,
+`author.id`, `institutions.country_code`, `title.search`, …): OpenAlex
+translates them.
+
+## OQL and OQO
+
+OQL and OQO queries go to the root, as on OpenAlex:
+
+```
+/?oql=works where type is article and year >= 2015
+/?oql=get the count of all works by country
+```
+
+```{r}
+library(httr2)
+oqo <- list(
+  get_rows = "works",
+  filter_rows = list(
+    list(column_id = "type", value = "article"),
+    list(join = "or", filters = list(
+      list(column_id = "authorships.countries", value = "CH"),
+      list(column_id = "authorships.countries", value = "DE")
+    ))
+  ),
+  sort_by = list(list(column_id = "cited_by_count", direction = "desc"))
+)
+res <- request("http://127.0.0.1:8000") |>
+  req_body_json(list(oqo = oqo, per_page = 10, select = "id,display_name")) |>
+  req_perform() |>
+  resp_body_json()
+res$meta$count
+```
+
+Each response carries the query that ran in `meta.x_query`: the OQL text (for
+translated queries) and the OQO.
+
+## Responses
+
+Responses have the OpenAlex shape:
+
+- **records:** `{"meta": {count, page, per_page, next_cursor, …}, "results": […]}`;
+- **groups:** `{"meta": {count, groups_count, …}, "group_by": [{key, key_display_name, count}]}`;
+- **a single work:** the record itself.
+
+Paging works with `page` or `cursor`, at up to 200 per page. A `sample` (with
+or without `seed`) is the same on every page.
+
+Errors are HTTP 400 with OpenAlex's own validation message for queries it
+cannot translate. For queries the local corpus cannot answer, they are
+`{"error", "message"}`, for example a filter that is not supported here.
+OpenAlex's `/query` being unreachable is a 503.
+
+# Downloading with openalexPro
+
+Point openalexPro at the local server with `endpoint`. Everything else works
+as it does with OpenAlex: paging, `via = "url"` or `via = "oqo"`, grouped
+results, search, conversion to Parquet.
+
+```{r}
+library(openalexPro)
+ep <- "http://127.0.0.1:8000"
+
+# a subset of the corpus, as a new Parquet corpus
+pro_fetch(
+  pro_query(entity = "works", type = "article", publication_year = ">2015",
+            search = "coral bleaching", endpoint = ep),
+  project_folder = "subset"
+)
+
+# counts per country
+pro_fetch(
+  pro_query(entity = "works", group_by = "authorships.countries", endpoint = ep),
+  project_folder = "by_country"
+)
+```
+
+The web page's **Copy API URL** button gives the URL of the query shown, ready
+for `pro_fetch()`.
+
+# Filters
+
+`/corpus` lists what the served corpus supports. These filters are available
+(as OQO column names; classic URLs may use OpenAlex's aliases):
+
+| Area | Filters |
+|---|---|
+| work | `type`, `publication_year`, `from_publication_date`, `to_publication_date`, `language`, `is_retracted`, `is_paratext`, `has_doi`, `has_abstract`, `has_references` |
+| open access | `open_access.is_oa`, `open_access.oa_status`, `best_oa_location.license` |
+| counts | `cited_by_count`, `fwci`, `authors_count` |
+| people and places | `authorships.author.id`, `authorships.institutions.id`, `authorships.institutions.country_code`, `authorships.institutions.type`, `authorships.countries` |
+| source and topics | `primary_location.source.id`, `primary_location.source.type`, `primary_topic.id`, `primary_topic.field.id`, `primary_topic.domain.id`, `topics.id`, `keywords.id`, `sustainable_development_goals.id` |
+| identifiers and citations | `ids.openalex`, `doi`, `referenced_works` (`cites:`), `cited_by` |
+
+The query structure is the same as in OpenAlex:
+
+- all filters combine with AND;
+- `a|b` gives OR, and `!a` negates;
+- `>`, `<` and `2000-2010` give ranges;
+- `null` matches works where the field is missing.
+
+A negated filter also matches works without the field, as in OpenAlex.
+`cites` and `cited_by` work within the corpus: `cited_by:W1` lists the works
+of the corpus that W1 cites.
+
+# group_by
+
+One `group_by` dimension per query is supported, on the columns `/corpus`
+lists under `group_by`. Dates, `fwci`, `doi` and `cited_by` cannot be grouped
+by, as in OpenAlex.
+
+- **Counting:** each work counts once per key. List columns (countries,
+  authors, topics, …) are unpacked first. Filters and search apply before
+  grouping.
+- **Keys:** as in OpenAlex. That means `https://openalex.org/types/article`,
+  `https://openalex.org/countries/CH`, entity IDs, and plain years, counts
+  and `true`/`false`. An ID stored in several forms is one group.
+- **Sorting:** by count (largest first), or with `sort=key:asc` (numeric
+  keys sort as numbers), `count:asc` or `count:desc`.
+- **Missing values:** `group_by=column:include_unknown` adds the works
+  without a value as the group `unknown`.
+- **Display names** for countries, languages and licenses are their codes
+  ("CH"), where OpenAlex shows the full name ("Switzerland"): the corpus has
+  no names for them.
+
+# Full-text search
+
+There is no full text locally. The searches run over title and abstract:
+
+| Parameter or filter | Searches |
+|---|---|
+| `search=`, `fulltext.search`, `default.search` | title and abstract |
+| `filter=title_and_abstract.search:` | title and abstract |
+| `filter=title.search:` (`display_name.search`) | title |
+| `filter=abstract.search:` | abstract |
+| `search.exact=` and the `.search.exact` filters | the same, without stemming or stop words |
+
+The search rules follow OpenAlex:
+
+- **Words:** all words must match. `coral bleaching` finds works with both.
+- **Phrases:** `"coral bleaching"` must appear in this order.
+- **Boolean operators:** `AND`, `OR` and `NOT` work between terms.
+- **Wildcards:** `bleach*` works with the exact search only.
+- **Relevance:** results are ranked by `relevance_score` (BM25), which each
+  record carries. It is the default sort when searching, and
+  `sort=relevance_score:desc|asc` works too.
+
+The differences from OpenAlex:
+
+- the stemmer (Porter) folds more word forms than OpenAlex's, so stemmed
+  counts can be higher; exact searches are closer;
+- proximity search (`"a b"~N`) is not supported;
+- searches of fields the corpus does not index (e.g. affiliation strings) are
+  a 400.
+
+# The web page
+
+<http://127.0.0.1:8000/> opens a page with two modes:
+
+- **Search & filters:** a search box (with an "exact" switch), a filter string
+  in OpenAlex syntax, and a clickable list of the supported filters.
+- **OQL:** a box for an OQL query.
+
+Records show title, authors, year, type, citations and relevance, with
+paging. Grouped results show as bars, and clicking a bar narrows the filters
+to that group. The page also shows the translated OQL, OpenAlex's error
+messages, and the **Copy API URL** button. It works in light and dark mode
+and at phone width.
+
+# Using the compiler directly
+
+`oqo_to_sql()` turns an OQO into the SQL that runs against the database of a
+prepared corpus:
+
+```{r}
+db <- prepare_corpus("my_project/parquet")
+con <- DBI::dbConnect(duckdb::duckdb(), dbdir = db, read_only = TRUE)
+DBI::dbExecute(con, "LOAD fts")
+s <- oqo_to_sql(list(get_rows = "works", filter_rows = list(
+  list(column_id = "type", value = "article")
+)), con)
+s$where
+```
+
+The SQL uses helper columns and macros (`id_key()`, `doi_key()`) that
+`serve_corpus()` sets up. Use it to see what a query does, rather than as a
+general SQL generator.
