@@ -27,6 +27,13 @@
   "Copy API URL" for `openalexPro::pro_fetch()`. Light and dark, phone width.
   The page's files are linked with a stamp of their content, so a browser
   loads new ones after an upgrade.
+- Columns whose type differs between Parquet files (e.g. a number in one
+  download, text in another) are reported when the corpus is prepared; the
+  columns filters compare as numbers, dates or booleans (`publication_year`,
+  `cited_by_count`, `fwci`, `publication_date`, `is_retracted`,
+  `is_paratext`) are converted back, with a count of unreadable values. Other
+  columns are served in the common type DuckDB reads them as. Extra,
+  non-OpenAlex columns are served as they are (not filterable).
 - Parquet files that hold no works (e.g. snowball edges, collection
   `members/`) are skipped; a sample spanning pages is the same on every page;
   `GET /works/{id}` also takes a DOI and `select`.

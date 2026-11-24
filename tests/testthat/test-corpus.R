@@ -74,3 +74,49 @@ test_that("the translation cache is capped", {
   expect_lte(length(cache), 3L)
   expect_true(length(cache) >= 1L)
 })
+
+test_that("filter columns whose type differs between files are cast back", {
+  dir <- withr::local_tempdir()
+  con0 <- DBI::dbConnect(duckdb::duckdb())
+  src <- sprintf("read_parquet('%s/**/*.parquet', union_by_name = true)", fixture("corpus_jq"))
+  DBI::dbExecute(con0, sprintf(
+    "COPY (SELECT * FROM %s ORDER BY id LIMIT 200) TO '%s/a.parquet' (FORMAT parquet)", src, dir))
+  # the other works: cited_by_count as text (one unreadable), year as double,
+  # and a non-filter column with two types
+  DBI::dbExecute(con0, sprintf(
+    "COPY (SELECT * EXCLUDE (rn) REPLACE (
+       CASE WHEN rn = 1 THEN 'n/a' ELSE CAST(cited_by_count AS VARCHAR) END AS cited_by_count,
+       CAST(publication_year AS DOUBLE) AS publication_year,
+       CAST(locations_count AS VARCHAR) AS locations_count)
+     FROM (SELECT *, row_number() OVER (ORDER BY id) AS rn FROM (
+       SELECT * FROM %s ORDER BY id OFFSET 200)))
+     TO '%s/b.parquet' (FORMAT parquet)", src, dir))
+  DBI::dbDisconnect(con0, shutdown = TRUE)
+
+  msgs <- testthat::capture_messages(db <- prepare_corpus(dir, cache_dir = withr::local_tempdir()))
+  expect_true(any(grepl("`cited_by_count` .*converted back to BIGINT \\(1 value", msgs)))
+  expect_true(any(grepl("`publication_year` .*converted back to INTEGER", msgs)))
+  expect_true(any(grepl("`locations_count` has different types", msgs)))
+
+  con <- openalexAPI:::.api_open(db)
+  on.exit(DBI::dbDisconnect(con, shutdown = TRUE))
+  types <- DBI::dbGetQuery(con, "DESCRIBE works")
+  type_of <- function(x) types$column_type[types$column_name == x]
+  expect_equal(type_of("cited_by_count"), "BIGINT")
+  expect_equal(type_of("publication_year"), "INTEGER")
+  expect_equal(type_of("locations_count"), "VARCHAR") # not a filter column: common type
+
+  ref <- local_fixture_con()
+  expect_equal(n_oqo(con, list(leaf("cited_by_count", 10, ">"))),
+               n_sql(ref, "cited_by_count > 10"))
+  expect_equal(n_oqo(con, list(leaf("publication_year", 2005, ">="))),
+               n_sql(ref, "publication_year >= 2005"))
+  expect_equal(n_sql(con, "cited_by_count IS NULL"), 1)
+  # served as numbers again
+  ctx <- list(con = con, columns = types$column_name,
+              served = openalexAPI:::.api_served_columns(con))
+  r <- jsonlite::fromJSON(openalexAPI:::.api_execute(ctx, list(get_rows = "works"),
+    list(per_page = 1, select = "cited_by_count,publication_year")), simplifyVector = FALSE)
+  expect_type(r$results[[1]]$cited_by_count, "integer")
+  expect_type(r$results[[1]]$publication_year, "integer")
+})

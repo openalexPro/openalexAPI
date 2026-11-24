@@ -54,7 +54,7 @@ prepare_corpus <- function(
 #' a version with another layout is rebuilt. Bump it when `.api_build()` changes.
 #' @keywords internal
 #' @noRd
-.api_build_version <- "2"
+.api_build_version <- "3"
 
 #' Columns added by openalexPro or a query, not OpenAlex fields: never served
 #' @keywords internal
@@ -65,12 +65,16 @@ prepare_corpus <- function(
 #' @keywords internal
 #' @noRd
 .api_build <- function(con, files) {
-  files <- .api_works_files(con, files)
+  wf <- .api_works_files(con, files)
+  files <- wf$files
   src <- paste0(
     "read_parquet(", .api_sql_list(con, files),
     ", union_by_name = true, hive_partitioning = false)"
   )
-  cols <- DBI::dbGetQuery(con, paste("DESCRIBE SELECT * FROM", src))$column_name
+  desc <- DBI::dbGetQuery(con, paste("DESCRIBE SELECT * FROM", src))
+  cols <- desc$column_name
+  .api_report_merged_types(wf$types)
+  casts <- .api_restore_types(con, src, desc)
   if (!"id" %in% cols) {
     stop("The corpus has no `id` column.", call. = FALSE)
   }
@@ -83,7 +87,7 @@ prepare_corpus <- function(
     "NULL"
   }
   DBI::dbExecute(con, paste0(
-    "CREATE TABLE works AS SELECT *, ",
+    "CREATE TABLE works AS SELECT * ", casts, ", ",
     "id_key(id) AS oaapi_id, ",
     if (has("doi")) "doi_key(doi)" else "NULL::VARCHAR", " AS oaapi_doi, ",
     if (has("referenced_works")) "list_transform(referenced_works, lambda x: id_key(x))" else
@@ -133,11 +137,13 @@ prepare_corpus <- function(
 #' @keywords internal
 #' @noRd
 .api_works_files <- function(con, files) {
-  is_works <- vapply(files, function(f) {
-    cols <- DBI::dbGetQuery(con, paste0(
+  schemas <- lapply(files, function(f) {
+    DBI::dbGetQuery(con, paste0(
       "DESCRIBE SELECT * FROM read_parquet(", DBI::dbQuoteLiteral(con, f), ")"
-    ))$column_name
-    "id" %in% cols && any(c("title", "display_name") %in% cols)
+    ))[, c("column_name", "column_type")]
+  })
+  is_works <- vapply(schemas, function(d) {
+    "id" %in% d$column_name && any(c("title", "display_name") %in% d$column_name)
   }, TRUE)
   if (!any(is_works)) {
     stop("None of the Parquet files holds works (columns `id` and `title` or ",
@@ -147,7 +153,64 @@ prepare_corpus <- function(
     message("Skipping ", sum(!is_works), " Parquet file(s) that hold no works, e.g. ",
             files[!is_works][[1]])
   }
-  files[is_works]
+  list(files = files[is_works], types = unique(do.call(rbind, schemas[is_works])))
+}
+
+#' Columns the filters compare as numbers, dates or booleans, and the types
+#' they accept (a regex on the DuckDB type)
+#' @keywords internal
+#' @noRd
+.api_column_types <- list(
+  publication_year = c("INTEGER", "^(TINYINT|SMALLINT|INTEGER|BIGINT|HUGEINT|U(TINY|SMALL|BIG)?INT(EGER)?)$"),
+  cited_by_count = c("BIGINT", "^(TINYINT|SMALLINT|INTEGER|BIGINT|HUGEINT|U(TINY|SMALL|BIG)?INT(EGER)?)$"),
+  fwci = c("DOUBLE", "^(TINYINT|SMALLINT|INTEGER|BIGINT|HUGEINT|FLOAT|DOUBLE|DECIMAL.*)$"),
+  publication_date = c("DATE", "^(DATE|TIMESTAMP.*)$"),
+  is_retracted = c("BOOLEAN", "^BOOLEAN$"),
+  is_paratext = c("BOOLEAN", "^BOOLEAN$")
+)
+
+#' Tell which columns have different types in different files
+#'
+#' DuckDB then reads them as one common type, often text (a number in one
+#' download, a string in another). The filter columns are cast back
+#' (`.api_restore_types()`); other columns are served in the common type.
+#' @keywords internal
+#' @noRd
+.api_report_merged_types <- function(types) {
+  n <- table(types$column_name)
+  mixed <- names(n)[n > 1]
+  for (col in mixed) {
+    message("Column `", col, "` has different types in different files (",
+            paste(unique(types$column_type[types$column_name == col]), collapse = ", "),
+            "); they are read as one common type.")
+  }
+  invisible(mixed)
+}
+
+#' `REPLACE (...)` casting filter columns back to their type, or ""
+#'
+#' A column read as another type (e.g. `cited_by_count` as text, because one
+#' file had it as text) is cast with TRY_CAST; values that cannot be read
+#' become NULL, with a message saying how many.
+#' @keywords internal
+#' @noRd
+.api_restore_types <- function(con, src, desc) {
+  out <- character(0)
+  for (col in intersect(names(.api_column_types), desc$column_name)) {
+    want <- .api_column_types[[col]]
+    type <- desc$column_type[desc$column_name == col]
+    if (grepl(want[[2]], type)) next
+    q <- DBI::dbQuoteIdentifier(con, col)
+    lost <- DBI::dbGetQuery(con, paste0(
+      "SELECT count(*) AS n FROM ", src, " WHERE ", q, " IS NOT NULL AND TRY_CAST(", q,
+      " AS ", want[[1]], ") IS NULL"
+    ))$n
+    message("Column `", col, "` is read as ", type, "; converted back to ", want[[1]],
+            if (lost > 0) paste0(" (", lost, " value(s) could not be read and are missing)"),
+            ".")
+    out <- c(out, paste0("TRY_CAST(", q, " AS ", want[[1]], ") AS ", q))
+  }
+  if (length(out)) paste0("REPLACE (", paste(out, collapse = ", "), ")") else ""
 }
 
 #' Rebuild `abstract_inverted_index` from the abstract text (JSONL-path corpora)
