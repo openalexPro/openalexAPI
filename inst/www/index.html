@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>openalexAPI</title>
+  <link rel="stylesheet" href="/assets/style.css?v={{v}}">
+</head>
+<body>
+  <header>
+    <h1>openalexAPI</h1>
+    <p id="corpus" class="muted">Loading corpus…</p>
+  </header>
+
+  <main>
+    <form id="query" autocomplete="off">
+      <div class="modes" role="group" aria-label="Query syntax">
+        <button type="button" data-mode="classic" aria-pressed="true">Search &amp; filters</button>
+        <button type="button" data-mode="oql" aria-pressed="false">OQL</button>
+      </div>
+
+      <div id="classic" class="panel">
+        <label for="search">Search (title and abstract)</label>
+        <div class="row search">
+          <input id="search" type="search" placeholder="coral bleaching, &quot;exact phrase&quot;, a OR b, a NOT b">
+          <span class="check"><input id="exact" type="checkbox"> <label for="exact">exact</label></span>
+        </div>
+        <label>Filters
+          <input id="filter" type="text" placeholder="type:article,publication_year:>2000,authorships.countries:ch">
+        </label>
+        <details>
+          <summary>Supported filters</summary>
+          <p class="muted">Click one to add it. Values as in OpenAlex: <code>a|b</code> for OR, <code>!a</code> for NOT, <code>&gt;</code> / <code>&lt;</code> / <code>2000-2010</code> for ranges.</p>
+          <div id="filters" class="chips"></div>
+        </details>
+      </div>
+
+      <div id="oql" class="panel" hidden>
+        <label>OQL query
+          <textarea id="oqltext" rows="3" placeholder="works where type is article and year >= 2000"></textarea>
+        </label>
+      </div>
+
+      <div class="row controls">
+        <label>Group by
+          <select id="groupby"><option value="">— none —</option></select>
+        </label>
+        <label>Sort
+          <select id="sort"></select>
+        </label>
+        <label>Per page
+          <select id="perpage">
+            <option>25</option><option>50</option><option>100</option><option>200</option>
+          </select>
+        </label>
+        <button id="run" type="submit" class="primary">Run</button>
+      </div>
+    </form>
+
+    <section id="status" aria-live="polite" hidden>
+      <div class="row between">
+        <p><strong id="count"></strong> <span id="time" class="muted"></span></p>
+        <button id="copy" type="button" title="Copy the API URL of this query, e.g. for openalexPro::pro_fetch()">Copy API URL</button>
+      </div>
+      <p id="oqlecho" class="muted" hidden>OQL: <code></code></p>
+    </section>
+
+    <p id="error" class="error" role="alert" hidden></p>
+
+    <section id="results" hidden>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>Title</th><th>Year</th><th>Type</th><th class="num">Cited by</th><th class="num" id="relhead">Relevance</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <nav class="row pager" aria-label="Pages">
+        <button id="prev" type="button">Previous</button>
+        <span id="pageinfo" class="muted"></span>
+        <button id="next" type="button">Next</button>
+      </nav>
+    </section>
+
+    <section id="groups" hidden>
+      <ol class="bars"></ol>
+      <nav class="row pager" aria-label="Pages of groups">
+        <button id="gprev" type="button">Previous</button>
+        <span id="gpageinfo" class="muted"></span>
+        <button id="gnext" type="button">Next</button>
+      </nav>
+    </section>
+  </main>
+
+  <script src="/assets/query.js?v={{v}}"></script>
+  <script src="/assets/app.js?v={{v}}"></script>
+</body>
+</html>

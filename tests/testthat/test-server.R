@@ -285,3 +285,35 @@ test_that("openalexPro downloads search results from the server", {
     expect_true(all(!is.na(got$relevance_score)), label = via)
   }
 })
+
+test_that("the web page is served; `/` stays JSON for queries", {
+  url <- local_server()
+  get <- function(path, follow = TRUE) {
+    r <- httr2::request(paste0(url, path)) |> httr2::req_error(is_error = function(x) FALSE)
+    if (!follow) r <- httr2::req_options(r, followlocation = FALSE)
+    httr2::req_perform(r)
+  }
+  root <- get("/", follow = FALSE)
+  expect_equal(httr2::resp_status(root), 302)
+  expect_equal(httr2::resp_header(root, "location"), "/app")
+  page <- get("/")
+  expect_equal(httr2::resp_content_type(page), "text/html")
+  expect_equal(httr2::resp_header(page, "cache-control"), "no-cache")
+  html <- httr2::resp_body_string(page)
+  expect_match(html, "openalexAPI")
+  # the files are linked with a stamp of their content, so upgrades reload them
+  links <- regmatches(html, gregexpr('/assets/[a-z]+\\.(js|css)\\?v=[0-9a-f]{10}', html))[[1]]
+  expect_setequal(sub("\\?.*", "", links), c("/assets/style.css", "/assets/query.js", "/assets/app.js"))
+  expect_length(unique(sub(".*v=", "", links)), 1)
+  expect_false(grepl("{{v}}", html, fixed = TRUE))
+  for (f in links) {
+    expect_equal(httr2::resp_status(get(f)), 200, label = f)
+  }
+  info <- call_api(url, "/corpus")$json
+  expect_true(all(c("type", "authorships.countries") %in% unlist(info$group_by)))
+  expect_false("fwci" %in% unlist(info$group_by))
+  # a query at `/` is JSON whatever the client accepts
+  q <- utils::URLencode('{"get_rows":"works"}', reserved = TRUE)
+  r <- get(paste0("/?oqo=", q, "&per_page=1"))
+  expect_equal(httr2::resp_content_type(r), "application/json")
+})

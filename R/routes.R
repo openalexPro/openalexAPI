@@ -11,7 +11,8 @@
 #' * `GET /?oql=...` and `GET /?oqo=...`, `POST /` with `oqo` or `oql` and the
 #'   view parameters `select`, `sort`, `per_page`, `page`, `cursor`
 #' * `POST /query`: forwarded to OpenAlex (translation)
-#' * `GET /corpus`: what is served
+#' * `GET /corpus`: what is served (filters, group_by columns)
+#' * `/`: a web page for running queries in the browser (`/app`)
 #'
 #' Classic URLs and OQL are translated to OQO by OpenAlex's free `/query`
 #' endpoint (the network is needed, no credits are spent); an OQO runs fully
@@ -122,7 +123,7 @@ serve_corpus <- function(
     json_ok(response, .api_execute(ctx, oqo, view, oql))
   }
 
-  plumber2::api() |>
+  app <- plumber2::api() |>
     plumber2::api_get("/works", guard(function(request, response, ...) {
       q <- query_of(request)
       view <- q[intersect(names(q), .api_view_params)]
@@ -154,17 +155,18 @@ serve_corpus <- function(
         works = DBI::dbGetQuery(ctx$con, "SELECT count(*) AS n FROM works")$n,
         columns = ctx$served,
         filters = sort(names(reg)[ok]),
-        filters_unavailable = sort(names(reg)[!ok])
+        filters_unavailable = sort(names(reg)[!ok]),
+        group_by = intersect(names(.api_groups_works()), names(reg)[ok])
       )))
     }), serializers = raw) |>
     plumber2::api_get("/", guard(function(request, response, ...) {
       q <- query_of(request)
       view <- q[intersect(names(q), .api_view_params)]
       if (is.null(q$oql) && is.null(q$oqo)) {
-        return(json_ok(response, .api_json(list(
-          message = "openalexAPI: an OpenAlex-compatible API over a local corpus.",
-          corpus = ctx$corpus, see = "/corpus"
-        ))))
+        # the web page; `/` itself stays JSON-only for API clients
+        response$status <- 302L
+        response$set_header("Location", "/app")
+        return("")
       }
       run(request, response, q[intersect(names(q), c("oql", "oqo"))], view)
     }), serializers = raw) |>
@@ -180,4 +182,33 @@ serve_corpus <- function(
       fwd <- .api_forward_query(body_of(request), ctx$root, key_of(request))
       json_ok(response, fwd$body, fwd$status)
     }), serializers = raw)
+  # the web page; never an empty path, which could serve the working directory
+  www <- system.file("www", package = "openalexAPI")
+  if (nzchar(www) && file.exists(file.path(www, "index.html"))) {
+    app <- .api_add_page(app, www)
+  } else {
+    message("openalexAPI's web page (inst/www) was not found; serving the API only.")
+  }
+  app
+}
+
+#' The web page: `/app` (from `index.html`), its files under `/assets/`
+#'
+#' The links to the files carry a stamp of their content (`?v=`), and `/app`
+#' is not cached, so a browser loads new files after an upgrade instead of
+#' running a cached old `app.js` next to a new `query.js`.
+#' @keywords internal
+#' @noRd
+.api_add_page <- function(app, www) {
+  files <- c("style.css", "query.js", "app.js")
+  stamp <- substr(.api_md5(unlist(lapply(file.path(www, files), readLines, warn = FALSE))), 1, 10)
+  html <- paste(readLines(file.path(www, "index.html"), warn = FALSE), collapse = "\n")
+  html <- gsub("{{v}}", stamp, html, fixed = TRUE)
+  app |>
+    plumber2::api_get("/app", function(response, ...) {
+      response$status <- 200L
+      response$set_header("Cache-Control", "no-cache")
+      html
+    }, serializers = list("text/html" = function(x) x)) |>
+    plumber2::api_assets("/assets", www)
 }
