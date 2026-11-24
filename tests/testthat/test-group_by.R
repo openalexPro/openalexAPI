@@ -89,3 +89,71 @@ test_that("what cannot be grouped stops with a 400", {
   expect_match(err(openalexAPI:::.api_execute(ctx, list(get_rows = "works", sample = 5,
     group_by = list(list(column_id = "type"))))), "sample")
 })
+
+test_that("keys sort as numbers where numeric, the unknown group last", {
+  con <- local_fixture_con()
+  for (dir in c("asc", "desc")) {
+    keys <- names(counts(grouped(con, "cited_by_count",
+                                 sort_by = list(list(column_id = "key", direction = dir)))))
+    want <- sort(as.numeric(keys), decreasing = dir == "desc")
+    expect_equal(as.numeric(keys), want)
+    k <- names(counts(grouped(con, "primary_location.source.id:include_unknown",
+                              sort_by = list(list(column_id = "key", direction = dir)))))
+    expect_equal(k[[length(k)]], "unknown")
+  }
+})
+
+# A copy of corpus_jq with mixed ID forms, a missing source name and a real
+# oa_status 'unknown'
+local_odd_corpus <- function(env = parent.frame()) {
+  dir <- withr::local_tempdir(.local_envir = env)
+  con0 <- DBI::dbConnect(duckdb::duckdb())
+  on.exit(DBI::dbDisconnect(con0, shutdown = TRUE))
+  DBI::dbExecute(con0, sprintf("
+    COPY (SELECT * REPLACE (
+      CASE WHEN rn %% 2 = 0
+           THEN list_transform(referenced_works, lambda x: regexp_replace(x, '^.*/', ''))
+           ELSE referenced_works END AS referenced_works,
+      struct_update(primary_location, source := struct_update(primary_location.source,
+        display_name := CASE WHEN rn %% 3 = 0 THEN NULL
+                             ELSE primary_location.source.display_name END)) AS primary_location,
+      struct_update(open_access, oa_status := CASE WHEN rn %% 5 = 0 THEN 'unknown'
+        WHEN rn %% 5 = 1 THEN NULL ELSE open_access.oa_status END) AS open_access)
+    FROM (SELECT *, row_number() OVER () AS rn
+          FROM read_parquet('%s/**/*.parquet', union_by_name = true)))
+    TO '%s/w.parquet' (FORMAT parquet)", fixture("corpus_jq"), dir))
+  con <- openalexAPI:::.api_open(prepare_corpus(dir, cache_dir = withr::local_tempdir(.local_envir = env)))
+  withr::defer(DBI::dbDisconnect(con, shutdown = TRUE), envir = env)
+  con
+}
+
+test_that("an ID stored in several forms is one group", {
+  con <- local_odd_corpus()
+  x <- numeric(0)
+  cursor <- "*"
+  while (!is.null(cursor)) {
+    page <- grouped(con, "referenced_works", view = list(cursor = cursor))
+    x <- c(x, counts(page))
+    cursor <- page$meta$next_cursor
+  }
+  want <- DBI::dbGetQuery(con, "SELECT count(DISTINCT r) AS n FROM
+    (SELECT unnest(oaapi_refs) AS r FROM works)")$n
+  expect_length(x, want)
+  expect_false(anyDuplicated(toupper(sub("^.*/", "", names(x)))) > 0)
+  top <- DBI::dbGetQuery(con, "SELECT r, count(DISTINCT oaapi_id) AS n FROM
+    (SELECT oaapi_id, unnest(oaapi_refs) AS r FROM works) GROUP BY r ORDER BY n DESC, r LIMIT 1")
+  expect_equal(unname(x[[1]]), top$n)
+  expect_equal(toupper(sub("^.*/", "", names(x)[[1]])), top$r)
+})
+
+test_that("a missing display name is null, a real `unknown` value merges", {
+  con <- local_odd_corpus()
+  g <- grouped(con, "primary_location.source.id")$group_by
+  expect_true(all(vapply(g, function(x) "key_display_name" %in% names(x), TRUE)))
+  expect_true(any(vapply(g, function(x) is.null(x$key_display_name), TRUE)))
+
+  x <- counts(grouped(con, "open_access.oa_status:include_unknown"))
+  expect_equal(sum(names(x) == "unknown"), 1)
+  expect_equal(unname(x[["unknown"]]),
+               n_sql(con, "open_access.oa_status = 'unknown' OR open_access.oa_status IS NULL"))
+})

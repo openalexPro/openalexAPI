@@ -133,24 +133,36 @@
   con <- ctx$con
   per_page <- .api_int(view$per_page, "per_page", 200L, max = 200L)
   offset <- .api_offset(view, per_page)
-  m <- paste("(SELECT * FROM works WHERE", sql$where, ")")
-  count <- .api_get(con, paste("SELECT count(*) AS n FROM", m, "w"))$n
-
-  keys <- paste0("list_filter(", sql$group$pairs, ", lambda p: p.k IS NOT NULL)")
-  groups <- paste0(
-    "SELECT p.k AS k, min(p.d) AS d, count(DISTINCT oaapi_id) AS n ",
-    "FROM (SELECT oaapi_id, unnest(", keys, ") AS p FROM ", m, " w) GROUP BY p.k"
+  # The filter runs once: the matching works' keys, then their groups, are
+  # temp tables for this request (requests are handled one at a time)
+  on.exit(DBI::dbExecute(con, "DROP TABLE IF EXISTS oaapi_m; DROP TABLE IF EXISTS oaapi_g"),
+          add = TRUE)
+  .api_get(con, paste0(
+    "CREATE OR REPLACE TEMP TABLE oaapi_m AS SELECT oaapi_id, list_filter(",
+    sql$group$pairs, ", lambda p: p.k IS NOT NULL) AS ks FROM works WHERE ", sql$where
+  ), exec = TRUE)
+  count <- .api_get(con, "SELECT count(*) AS n FROM oaapi_m")$n
+  groups <- paste(
+    "SELECT p.g AS g, min(p.k) AS k, min(p.d) AS d, count(DISTINCT oaapi_id) AS n, 0 AS u",
+    "FROM (SELECT oaapi_id, unnest(ks) AS p FROM oaapi_m) GROUP BY p.g"
   )
   if (isTRUE(sql$group$include_unknown) || isTRUE(view$include_unknown)) {
-    groups <- paste0(
-      groups, " UNION ALL SELECT 'unknown', 'unknown', count(*) FROM ", m, " w ",
-      "WHERE coalesce(len(", keys, "), 0) = 0 HAVING count(*) > 0"
+    groups <- paste(
+      groups, "UNION ALL SELECT 'unknown', 'unknown', 'unknown', count(*), 1 FROM oaapi_m",
+      "WHERE coalesce(len(ks), 0) = 0 HAVING count(*) > 0"
     )
   }
-  n_groups <- .api_get(con, paste0("SELECT count(*) AS n FROM (", groups, ")"))$n
+  # a real value `unknown` and the unknown group are one group (their works
+  # are disjoint: with a key, without one)
+  .api_get(con, paste(
+    "CREATE OR REPLACE TEMP TABLE oaapi_g AS",
+    "SELECT g, min(k) AS k, min(d) AS d, sum(n) AS n, max(u) AS u FROM (", groups, ")",
+    "GROUP BY g"
+  ), exec = TRUE)
+  n_groups <- .api_get(con, "SELECT count(*) AS n FROM oaapi_g")$n
   order <- c(sql$order %||% "n DESC", "k ASC")
   rows <- .api_get(con, paste0(
-    "SELECT k AS key, d AS key_display_name, n AS count FROM (", groups, ") ",
+    "SELECT k AS key, d AS key_display_name, n AS count FROM oaapi_g ",
     "ORDER BY ", paste(order, collapse = ", "), " LIMIT ", per_page, " OFFSET ", offset
   ))
   next_cursor <- if (!is.null(view$cursor) && offset + per_page < n_groups) {
@@ -168,7 +180,7 @@
   rows$count <- as.integer(rows$count)
   paste0(
     '{"meta":', .api_json(meta),
-    ',"group_by":', if (nrow(rows)) .api_json(rows) else "[]", '}'
+    ',"group_by":', if (nrow(rows)) .api_json(rows, na = "null") else "[]", '}'
   )
 }
 
@@ -200,8 +212,9 @@
 #' missing in corpora with an older or narrower schema.
 #' @keywords internal
 #' @noRd
-.api_get <- function(con, sql) {
-  tryCatch(DBI::dbGetQuery(con, sql), error = function(e) {
+.api_get <- function(con, sql, exec = FALSE) {
+  run <- if (exec) DBI::dbExecute else DBI::dbGetQuery
+  tryCatch(run(con, sql), error = function(e) {
     msg <- conditionMessage(e)
     if (!grepl("Binder Error", msg, fixed = TRUE)) stop(e)
     .api_abort(paste0(
@@ -227,6 +240,6 @@
 #' Serialise a response list to JSON text
 #' @keywords internal
 #' @noRd
-.api_json <- function(x) {
-  as.character(jsonlite::toJSON(x, auto_unbox = TRUE, null = "null", digits = NA))
+.api_json <- function(x, ...) {
+  as.character(jsonlite::toJSON(x, auto_unbox = TRUE, null = "null", digits = NA, ...))
 }

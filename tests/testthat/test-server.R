@@ -225,4 +225,21 @@ test_that("openalexPro downloads grouped results from the server", {
     expect_setequal(got$key, want$key)
     expect_equal(got$count[match(want$key, got$key)], as.numeric(want$n), label = via)
   }
+
+  # more groups than a page: openalexPro pages through them
+  want <- DBI::dbGetQuery(con, "SELECT count(DISTINCT c) AS g FROM (SELECT
+    unnest(flatten(list_transform(authorships, lambda a: a.countries))) AS c FROM works)")$g
+  expect_gt(want, 10)
+  q <- openalexPro::pro_query(entity = "works", group_by = "authorships.countries",
+                              endpoint = url, options = list(per_page = 5))
+  for (via in c("url", "oqo")) {
+    out <- withr::local_tempdir()
+    openalexPro::pro_fetch(q, project_folder = out, via = via, progress = FALSE, verbose = FALSE)
+    pages <- list.files(out, "^group_by_page_[0-9]+\\.parquet$", recursive = TRUE)
+    expect_length(pages, ceiling(want / 5))
+    got <- DBI::dbGetQuery(con, sprintf(
+      "SELECT key FROM read_parquet('%s/**/*.parquet')", out))$key
+    expect_length(got, want)
+    expect_false(anyDuplicated(got) > 0)
+  }
 })

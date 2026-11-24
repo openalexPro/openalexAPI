@@ -15,9 +15,10 @@
 #'   are refused. `NULL` skips the check.
 #' @return A list with `where` (SQL condition, `"true"` without filters),
 #'   `order` (SQL `ORDER BY` terms from `sort_by`, or `NULL`; with `group_by`
-#'   terms on `n` (count) and `k` (key)) and `group` (`NULL`, or the
-#'   `group_by` dimension: `column`, `pairs` (SQL giving each work a list of
-#'   `{k, d}` key / display-name structs) and `include_unknown`).
+#'   terms on `n` (count), `k` (key) and `u` (1 for the unknown group)) and
+#'   `group` (`NULL`, or the `group_by` dimension: `column`, `pairs` (SQL
+#'   giving each work a list of `{g, k, d}` identity / key / display-name
+#'   structs) and `include_unknown`).
 #' @export
 oqo_to_sql <- function(oqo, con, columns = NULL) {
   registry <- .api_registry_works()
@@ -80,11 +81,15 @@ oqo_to_sql <- function(oqo, con, columns = NULL) {
   for (s in oqo$sort_by) {
     if (!is.null(group)) {
       # grouped: by the number of works or the key
-      col <- c(count = "n", key = "k")[s$column_id %||% ""]
-      if (is.na(col)) .api_abort(sprintf("Cannot sort groups by `%s`.", s$column_id))
+      by <- s$column_id %||% ""
+      if (!by %in% c("count", "key")) {
+        .api_abort(sprintf("Cannot sort groups by `%s`.", by))
+      }
       dir <- toupper(s$direction %||% "asc")
       if (!dir %in% c("ASC", "DESC")) .api_abort(sprintf("Unknown sort direction `%s`.", dir))
-      order <- c(order, paste(col, dir))
+      # keys: numeric ones by number, the `unknown` group last (u)
+      order <- c(order, if (by == "count") paste("n", dir) else
+        c("u ASC", paste("TRY_CAST(k AS DOUBLE)", dir, "NULLS LAST"), paste("k", dir)))
       next
     }
     entry <- registry[[s$column_id %||% ""]]
