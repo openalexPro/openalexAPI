@@ -48,7 +48,7 @@ value as the group \code{unknown})
 view parameters \code{select}, \code{sort}, \code{per_page}, \code{page}, \code{cursor}
 \item \code{POST /query}: forwarded to OpenAlex (translation)
 \item \code{GET /corpus}: what is served (filters, group_by columns)
-\item \code{/}: a web page for running queries in the browser (\verb{/www/index.html})
+\item \code{/}: a web page for running queries in the browser (\verb{/app})
 }
 
 Classic URLs and OQL are translated to OQO by OpenAlex's free \verb{/query}

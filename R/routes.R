@@ -12,7 +12,7 @@
 #'   view parameters `select`, `sort`, `per_page`, `page`, `cursor`
 #' * `POST /query`: forwarded to OpenAlex (translation)
 #' * `GET /corpus`: what is served (filters, group_by columns)
-#' * `/`: a web page for running queries in the browser (`/www/index.html`)
+#' * `/`: a web page for running queries in the browser (`/app`)
 #'
 #' Classic URLs and OQL are translated to OQO by OpenAlex's free `/query`
 #' endpoint (the network is needed, no credits are spent); an OQO runs fully
@@ -165,7 +165,7 @@ serve_corpus <- function(
       if (is.null(q$oql) && is.null(q$oqo)) {
         # the web page; `/` itself stays JSON-only for API clients
         response$status <- 302L
-        response$set_header("Location", "/www/index.html")
+        response$set_header("Location", "/app")
         return("")
       }
       run(request, response, q[intersect(names(q), c("oql", "oqo"))], view)
@@ -185,9 +185,30 @@ serve_corpus <- function(
   # the web page; never an empty path, which could serve the working directory
   www <- system.file("www", package = "openalexAPI")
   if (nzchar(www) && file.exists(file.path(www, "index.html"))) {
-    app <- plumber2::api_assets(app, "/www", www)
+    app <- .api_add_page(app, www)
   } else {
     message("openalexAPI's web page (inst/www) was not found; serving the API only.")
   }
   app
+}
+
+#' The web page: `/app` (from `index.html`), its files under `/assets/`
+#'
+#' The links to the files carry a stamp of their content (`?v=`), and `/app`
+#' is not cached, so a browser loads new files after an upgrade instead of
+#' running a cached old `app.js` next to a new `query.js`.
+#' @keywords internal
+#' @noRd
+.api_add_page <- function(app, www) {
+  files <- c("style.css", "query.js", "app.js")
+  stamp <- substr(.api_md5(unlist(lapply(file.path(www, files), readLines, warn = FALSE))), 1, 10)
+  html <- paste(readLines(file.path(www, "index.html"), warn = FALSE), collapse = "\n")
+  html <- gsub("{{v}}", stamp, html, fixed = TRUE)
+  app |>
+    plumber2::api_get("/app", function(response, ...) {
+      response$status <- 200L
+      response$set_header("Cache-Control", "no-cache")
+      html
+    }, serializers = list("text/html" = function(x) x)) |>
+    plumber2::api_assets("/assets", www)
 }

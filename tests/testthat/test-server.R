@@ -295,12 +295,19 @@ test_that("the web page is served; `/` stays JSON for queries", {
   }
   root <- get("/", follow = FALSE)
   expect_equal(httr2::resp_status(root), 302)
-  expect_equal(httr2::resp_header(root, "location"), "/www/index.html")
+  expect_equal(httr2::resp_header(root, "location"), "/app")
   page <- get("/")
   expect_equal(httr2::resp_content_type(page), "text/html")
-  expect_match(httr2::resp_body_string(page), "openalexAPI")
-  for (f in c("app.js", "style.css")) {
-    expect_equal(httr2::resp_status(get(paste0("/www/", f))), 200, label = f)
+  expect_equal(httr2::resp_header(page, "cache-control"), "no-cache")
+  html <- httr2::resp_body_string(page)
+  expect_match(html, "openalexAPI")
+  # the files are linked with a stamp of their content, so upgrades reload them
+  links <- regmatches(html, gregexpr('/assets/[a-z]+\\.(js|css)\\?v=[0-9a-f]{10}', html))[[1]]
+  expect_setequal(sub("\\?.*", "", links), c("/assets/style.css", "/assets/query.js", "/assets/app.js"))
+  expect_length(unique(sub(".*v=", "", links)), 1)
+  expect_false(grepl("{{v}}", html, fixed = TRUE))
+  for (f in links) {
+    expect_equal(httr2::resp_status(get(f)), 200, label = f)
   }
   info <- call_api(url, "/corpus")$json
   expect_true(all(c("type", "authorships.countries") %in% unlist(info$group_by)))
