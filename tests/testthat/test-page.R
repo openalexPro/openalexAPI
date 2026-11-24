@@ -44,6 +44,8 @@ test_that("group keys become filter values; grouped responses are recognised", {
   ctx <- page_js()
   expect_equal(ctx$call("OAQ.groupFilterValue", "https://openalex.org/types/article"), "article")
   expect_equal(ctx$call("OAQ.groupFilterValue", "https://openalex.org/countries/CH"), "CH")
+  expect_equal(ctx$call("OAQ.groupFilterValue", "https://openalex.org/source-types/ebook%20platform"),
+               "ebook platform")
   expect_equal(ctx$call("OAQ.groupFilterValue", "https://openalex.org/T10341"),
                "https://openalex.org/T10341")
   expect_true(ctx$call("OAQ.isGrouped", list(meta = list(groups_count = 0L), group_by = list())))

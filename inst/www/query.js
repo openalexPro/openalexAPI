@@ -51,8 +51,10 @@ var OAQ = (function () {
   // their https://openalex.org/<entity>/ prefix (OpenAlex accepts the other
   // keys, IDs included, as they are)
   function groupFilterValue(key) {
-    return String(key).replace(
-      /^https:\/\/openalex\.org\/(types|languages|countries|licenses|source-types|sdgs)\//, "");
+    var slug = /^https:\/\/openalex\.org\/(types|languages|countries|licenses|source-types|sdgs)\//;
+    var k = String(key);
+    // slug keys are URL-encoded (source-types/ebook%20platform)
+    return slug.test(k) ? decodeURIComponent(k.replace(slug, "")) : k;
   }
 
   // A grouped response has meta.groups_count (a number, also 0) and no results

@@ -157,3 +157,14 @@ test_that("a missing display name is null, a real `unknown` value merges", {
   expect_equal(unname(x[["unknown"]]),
                n_sql(con, "open_access.oa_status = 'unknown' OR open_access.oa_status IS NULL"))
 })
+
+test_that("slug keys are URL-encoded; true/false columns list both values", {
+  con <- local_fixture_con()
+  keys <- names(counts(grouped(con, "primary_location.source.type")))
+  expect_false(any(grepl(" ", keys)))
+  if (any(grepl("ebook", keys))) expect_true("https://openalex.org/source-types/ebook%20platform" %in% keys)
+  x <- counts(grouped(con, "is_retracted"))
+  expect_setequal(names(x), c("true", "false"))
+  expect_equal(unname(x[["true"]]), n_sql(con, "is_retracted"))
+  expect_equal(unname(x[["false"]]), n_sql(con, "NOT is_retracted"))
+})

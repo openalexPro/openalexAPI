@@ -218,7 +218,10 @@
     sprintf("list_transform(%s, lambda x: %s)",
             lst, pair(k, d, if (id) paste0("id_key(", k, ")") else k))
   }
-  pre <- function(entity, x) sprintf("'https://openalex.org/%s/' || %s", entity, x)
+  # slug keys are URL-encoded as OpenAlex does (`source-types/ebook%20platform`)
+  pre <- function(entity, x) {
+    sprintf("'https://openalex.org/%s/' || replace(%s, ' ', '%%20')", entity, x)
+  }
   inst <- "flatten(list_transform(authorships, lambda a: a.institutions))"
   countries <- "flatten(list_transform(authorships, lambda a: a.countries))"
   c(

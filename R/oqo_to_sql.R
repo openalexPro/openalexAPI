@@ -188,5 +188,8 @@ oqo_to_sql <- function(oqo, con, columns = NULL) {
   if (!is.null(columns) && !all(need %in% columns)) {
     .api_abort(sprintf("Column `%s` is not available in this corpus.", column))
   }
-  list(column = column, pairs = unname(pairs), include_unknown = unknown)
+  # OpenAlex lists both values of a true/false column, also with count 0
+  boolean <- column %in% c("open_access.is_oa", "is_retracted", "is_paratext", "has_doi",
+                           "has_abstract", "has_references")
+  list(column = column, pairs = unname(pairs), include_unknown = unknown, boolean = boolean)
 }

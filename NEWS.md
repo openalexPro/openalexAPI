@@ -5,6 +5,10 @@
   OpenAlex's 114-term systematic-review example from not finishing to 1.7 s;
   all other features take under 0.35 s (`tools/benchmark.R`). A
   wildcard-only search sorted by relevance no longer fails.
+- `group_by` matches OpenAlex in two more details, found by a live comparison
+  (`tools/live_parity.R`: 29 of 33 checks equal, the 4 search checks differ as
+  expected): slug keys are URL-encoded (`source-types/ebook%20platform`), and
+  true/false columns list both values, also with count 0.
 - Documentation: README, `vignette("openalexAPI")`, pkgdown site config,
   `CITATION` / `CITATION.cff` / `.zenodo.json`.
 - `prepare_corpus()` reads a Parquet corpus into a cached DuckDB database:
