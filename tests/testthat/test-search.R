@@ -1,0 +1,91 @@
+# Full-text search over title and abstract
+
+has <- function(column, value, is_negated = FALSE) {
+  list(column_id = column, value = value, operator = "has", is_negated = is_negated)
+}
+# works whose title + abstract match a case-insensitive regex
+n_re <- function(con, re) {
+  n_sql(con, paste0("regexp_matches(concat_ws(' ', oaapi_title, oaapi_abstract), ",
+                    DBI::dbQuoteLiteral(con, paste0("(?i)", re)), ")"))
+}
+
+test_that("exact search: words (AND), phrases in order, wildcards", {
+  con <- local_fixture_con()
+  ex <- "fulltext.search.exact"
+  expect_gt(n_oqo(con, list(has(ex, "deforestation"))), 0)
+  expect_equal(n_oqo(con, list(has(ex, "deforestation"))), n_re(con, "\\bdeforestation\\b"))
+  expect_equal(n_oqo(con, list(has(ex, "tropical deforestation"))),
+               n_sql(con, paste(
+                 "regexp_matches(concat_ws(' ', oaapi_title, oaapi_abstract), '(?i)\\btropical\\b')",
+                 "AND regexp_matches(concat_ws(' ', oaapi_title, oaapi_abstract), '(?i)\\bdeforestation\\b')")))
+  expect_equal(n_oqo(con, list(has(ex, '"tropical deforestation"'))),
+               n_re(con, "\\btropical\\W+deforestation\\b"))
+  expect_gt(n_oqo(con, list(has(ex, '"tropical deforestation"'))), 0)
+  expect_equal(n_oqo(con, list(has(ex, '"deforestation tropical"'))),
+               n_re(con, "\\bdeforestation\\W+tropical\\b"))
+  expect_equal(n_oqo(con, list(has(ex, "defor*"))), n_re(con, "\\bdefor\\w*\\b"))
+})
+
+test_that("stemmed search folds word forms; fields narrow the search", {
+  con <- local_fixture_con()
+  st <- function(v, col = "fulltext.search") n_oqo(con, list(has(col, v)))
+  expect_equal(st("forests"), st("forest"))
+  expect_gt(st("forest"), n_oqo(con, list(has("fulltext.search.exact", "forest"))))
+  expect_equal(st("forest", "title_and_abstract.search"), st("forest"))
+  expect_lt(st("forest", "display_name.search"), st("forest"))
+  expect_lte(st("forest", "abstract.search"), st("forest"))
+  # a word only in a title is found by the title search, not the abstract one
+  t <- DBI::dbGetQuery(con, "SELECT oaapi_title FROM works WHERE oaapi_title ILIKE '%democracy%' LIMIT 1")
+  expect_gt(st("democracy", "display_name.search"), 0)
+})
+
+test_that("negation and OR combine searches", {
+  con <- local_fixture_con()
+  f <- has("fulltext.search", "forest")
+  t <- has("fulltext.search", "tropical")
+  both <- n_oqo(con, list(f, t))
+  expect_equal(n_oqo(con, list(f, has("fulltext.search", "tropical", TRUE))),
+               n_oqo(con, list(f)) - both)
+  expect_equal(n_oqo(con, list(list(join = "or", filters = list(f, t)))),
+               n_oqo(con, list(f)) + n_oqo(con, list(t)) - both)
+})
+
+test_that("relevance: records carry relevance_score, most relevant first", {
+  con <- local_fixture_con()
+  ctx <- list(con = con, columns = DBI::dbGetQuery(con, "DESCRIBE works")$column_name,
+              served = openalexAPI:::.api_served_columns(con))
+  run <- function(oqo, view = list(per_page = 20)) {
+    jsonlite::fromJSON(openalexAPI:::.api_execute(ctx, oqo, view), simplifyVector = FALSE)
+  }
+  r <- run(list(get_rows = "works", filter_rows = list(has("fulltext.search", "tropical forest"))))
+  s <- vapply(r$results, function(x) x$relevance_score, 1)
+  expect_gt(length(s), 1)
+  expect_false(is.unsorted(rev(s)))
+  expect_true(all(s > 0))
+  asc <- run(list(get_rows = "works", filter_rows = list(has("fulltext.search", "forest")),
+                  sort_by = list(list(column_id = "relevance_score", direction = "asc"))))
+  s <- vapply(asc$results, function(x) x$relevance_score, 1)
+  expect_false(is.unsorted(s))
+  # without a search there is no relevance
+  plain <- run(list(get_rows = "works"), list(per_page = 1))
+  expect_null(plain$results[[1]]$relevance_score)
+  expect_error(oqo_to_sql(list(sort_by = list(list(column_id = "relevance_score"))), con),
+               "needs a search")
+  # search and group_by combine
+  g <- run(list(get_rows = "works", filter_rows = list(has("fulltext.search", "forest")),
+                group_by = list(list(column_id = "type"))))
+  expect_equal(sum(vapply(g$group_by, function(x) x$count, 1)),
+               n_oqo(con, list(has("fulltext.search", "forest"))))
+})
+
+test_that("unsupported search input is a 400", {
+  con <- local_fixture_con()
+  err <- function(rows) tryCatch(n_oqo(con, rows), oaapi_error = function(e) conditionMessage(e))
+  expect_match(err(list(has("fulltext.search", "defor*"))), "exact")
+  expect_match(err(list(has("fulltext.search", '"a b"~3'))), "Proximity")
+  expect_match(err(list(has("fulltext.search", '"open'))), "quote")
+  expect_match(err(list(has("fulltext.search", "  "))), "needs search terms")
+  expect_match(err(list(has("raw_affiliation_strings.search", "zurich"))), "not supported")
+  expect_match(err(list(list(column_id = "fulltext.search", value = "x", operator = ">"))),
+               "Operator")
+})

@@ -54,7 +54,7 @@ prepare_corpus <- function(
 #' a version with another layout is rebuilt. Bump it when `.api_build()` changes.
 #' @keywords internal
 #' @noRd
-.api_build_version <- "1"
+.api_build_version <- "2"
 
 #' Columns added by openalexPro or a query, not OpenAlex fields: never served
 #' @keywords internal
@@ -88,12 +88,40 @@ prepare_corpus <- function(
     if (has("doi")) "doi_key(doi)" else "NULL::VARCHAR", " AS oaapi_doi, ",
     if (has("referenced_works")) "list_transform(referenced_works, lambda x: id_key(x))" else
       "NULL::VARCHAR[]", " AS oaapi_refs, ",
-    abstract_text, " AS oaapi_abstract ",
+    abstract_text, " AS oaapi_abstract, ",
+    if (has("title")) "title" else if (has("display_name")) "display_name" else "NULL::VARCHAR",
+    " AS oaapi_title ",
     "FROM ", src, " WHERE id IS NOT NULL ",
     "QUALIFY row_number() OVER (PARTITION BY id_key(id) ORDER BY id) = 1"
   ))
   if (!has("abstract_inverted_index")) {
     .api_add_inverted_index(con)
+  }
+  .api_add_fts(con)
+  invisible(con)
+}
+
+#' Full-text indexes over title and abstract, BM25
+#'
+#' Two copies: `oaapi_docs_stem` (Porter stemmer, English stop words) serves
+#' the `*.search` columns, `oaapi_docs_exact` (no stemming, no stop words)
+#' the `*.search.exact` columns, as OpenAlex's `search` / `search.exact`.
+#' Each index is a table; DuckDB keeps one index per table.
+#' @keywords internal
+#' @noRd
+.api_add_fts <- function(con) {
+  for (kind in c("stem", "exact")) {
+    tbl <- paste0("oaapi_docs_", kind)
+    DBI::dbExecute(con, paste0(
+      "CREATE TABLE ", tbl, " AS SELECT oaapi_id, oaapi_title AS title, ",
+      "oaapi_abstract AS abstract FROM works"
+    ))
+    DBI::dbExecute(con, paste0(
+      "PRAGMA create_fts_index('", tbl, "', 'oaapi_id', 'title', 'abstract', ",
+      if (kind == "stem") "stemmer = 'porter', stopwords = 'english'" else
+        "stemmer = 'none', stopwords = 'none'",
+      ")"
+    ))
   }
   invisible(con)
 }

@@ -20,7 +20,8 @@ A list with \code{where} (SQL condition, \code{"true"} without filters),
 terms on \code{n} (count), \code{k} (key) and \code{u} (1 for the unknown group)) and
 \code{group} (\code{NULL}, or the \code{group_by} dimension: \code{column}, \code{pairs} (SQL
 giving each work a list of \verb{\{g, k, d\}} identity / key / display-name
-structs) and \code{include_unknown}).
+structs) and \code{include_unknown}), and \code{score} (the BM25 relevance of
+the search leaves that are not negated, or \code{NULL} without a search).
 }
 \description{
 Walks the filter tree of an OQO (OpenAlex Query Object): the top-level
