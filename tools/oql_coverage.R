@@ -62,8 +62,10 @@ result <- do.call(rbind, lapply(rows, function(r) {
     return(base)
   }
   cols <- unique(leaf_columns(oqo$filter_rows))
-  gb <- vapply(oqo$group_by %||% list(), function(g) sub(":include_unknown$", "", g$column_id), "")
-  sorts <- vapply(oqo$sort_by %||% list(), function(s) s$column_id, "")
+  # group_by / sort_by entries are {column_id: ...} or plain strings
+  col_of <- function(x) as.character(unlist(if (is.list(x)) x$column_id %||% x[[1]] else x))[1]
+  gb <- vapply(oqo$group_by %||% list(), function(g) sub(":include_unknown$", "", col_of(g) %||% ""), "")
+  sorts <- vapply(oqo$sort_by %||% list(), function(s) col_of(s) %||% "", "")
   missing <- c(
     setdiff(cols, registry),
     paste0("group_by:", setdiff(gb, groups)),
