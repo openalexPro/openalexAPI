@@ -81,7 +81,8 @@ test_that("unsupported input stops with a clear 400", {
   expect_s3_class(e, "oaapi_error")
   expect_equal(e$status, 400L)
   expect_match(conditionMessage(e), "not supported")
-  expect_match(conditionMessage(err(list(leaf("fulltext.search", "x", "has")))), "Search")
+  expect_match(conditionMessage(err(list(leaf("raw_author_name.search", "x", "has")))),
+               "Search column")
   expect_match(conditionMessage(err(list(leaf("type", "x", ">")))), "Operator")
   expect_match(conditionMessage(err(list(leaf("publication_year", "abc")))), "number")
   expect_match(conditionMessage(err(list(leaf("from_publication_date", "2020-13-45")))), "date")

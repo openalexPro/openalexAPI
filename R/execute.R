@@ -68,15 +68,20 @@
   count <- .api_get(con, paste("SELECT count(*) AS n FROM", from, "w"))$n
 
   order <- sql$order
+  if (!length(order) && !is.null(sql$score)) {
+    order <- paste0("(", sql$score, ") DESC") # a search: most relevant first
+  }
   if (!length(order) && "cited_by_count" %in% ctx$columns) {
     order <- "cited_by_count DESC NULLS LAST"
   }
   order <- c(order, "oaapi_id") # stable paging
 
-  cols <- .api_select(view$select, ctx$served)
+  # with a search, records carry `relevance_score`, as in OpenAlex
+  cols <- .api_select(view$select, c(ctx$served, if (!is.null(sql$score)) "relevance_score"))
   q <- DBI::dbQuoteIdentifier(con, cols)
+  expr <- ifelse(cols == "relevance_score", paste0("(", sql$score %||% "NULL", ")"), q)
   rows <- .api_get(con, paste0(
-    "SELECT to_json(struct_pack(", paste0(q, " := ", q, collapse = ", "), "))::VARCHAR AS j ",
+    "SELECT to_json(struct_pack(", paste0(q, " := ", expr, collapse = ", "), "))::VARCHAR AS j ",
     "FROM ", from, " w ORDER BY ", paste(order, collapse = ", "),
     " LIMIT ", per_page, " OFFSET ", offset
   ))$j

@@ -18,7 +18,8 @@
 #'   terms on `n` (count), `k` (key) and `u` (1 for the unknown group)) and
 #'   `group` (`NULL`, or the `group_by` dimension: `column`, `pairs` (SQL
 #'   giving each work a list of `{g, k, d}` identity / key / display-name
-#'   structs) and `include_unknown`).
+#'   structs) and `include_unknown`), and `score` (the BM25 relevance of
+#'   the search leaves that are not negated, or `NULL` without a search).
 #' @export
 oqo_to_sql <- function(oqo, con, columns = NULL) {
   registry <- .api_registry_works()
@@ -30,24 +31,29 @@ oqo_to_sql <- function(oqo, con, columns = NULL) {
     # corpus choice is meaningless locally: the corpus is what was downloaded
     oqo$corpus <- NULL
   }
-  node <- function(x) {
+  scores <- character(0) # BM25 of the search leaves that are not negated
+  node <- function(x, negated = FALSE) {
     neg <- isTRUE(x$is_negated)
+    negated <- xor(negated, neg)
     sql <- if (!is.null(x$filters)) {
       join <- toupper(x$join %||% "and")
       if (!join %in% c("AND", "OR")) .api_abort(sprintf("Unknown join `%s`.", x$join))
       if (!length(x$filters)) "true" else
-        paste0("(", paste(vapply(x$filters, node, ""), collapse = paste0(" ", join, " ")), ")")
+        paste0("(", paste(vapply(x$filters, node, "", negated = negated),
+                          collapse = paste0(" ", join, " ")), ")")
     } else {
-      leaf(x)
+      leaf(x, negated)
     }
     if (neg) paste0("(NOT ", sql, ")") else sql
   }
-  leaf <- function(x) {
+  leaf <- function(x, negated) {
     column <- x$column_id %||% ""
     entry <- registry[[column]]
     if (is.null(entry)) {
       if (grepl("\\.search(\\.exact)?$", column)) {
-        .api_abort(sprintf("Search (`%s`) is not supported yet.", column))
+        .api_abort(sprintf(
+          "Search column `%s` is not supported; the corpus has title and abstract (%s).",
+          column, paste(names(.api_search_entries()), collapse = ", ")))
       }
       .api_abort(sprintf(
         "Column `%s` is not supported. Supported: %s.",
@@ -69,6 +75,10 @@ oqo_to_sql <- function(oqo, con, columns = NULL) {
     if (length(x$value) != 1L) {
       .api_abort(sprintf("`%s` needs a single value.", column))
     }
+    if (!is.null(entry$score) && !negated) {
+      s <- entry$score(op, x$value, con, column)
+      if (!is.null(s)) scores <<- c(scores, paste0("coalesce(", s, ", 0)"))
+    }
     # never NULL: a missing value does not match, and its negation does
     paste0("coalesce(", entry$cond(op, x$value, con, column), ", false)")
   }
@@ -77,8 +87,16 @@ oqo_to_sql <- function(oqo, con, columns = NULL) {
   } else {
     "true"
   }
+  score <- if (length(scores)) paste(scores, collapse = " + ")
   order <- NULL
   for (s in oqo$sort_by) {
+    if (identical(s$column_id, "relevance_score") && is.null(group)) {
+      if (is.null(score)) .api_abort("Sorting by `relevance_score` needs a search.")
+      dir <- toupper(s$direction %||% "desc")
+      if (!dir %in% c("ASC", "DESC")) .api_abort(sprintf("Unknown sort direction `%s`.", dir))
+      order <- c(order, paste0("(", score, ") ", dir))
+      next
+    }
     if (!is.null(group)) {
       # grouped: by the number of works or the key
       by <- s$column_id %||% ""
@@ -100,7 +118,7 @@ oqo_to_sql <- function(oqo, con, columns = NULL) {
     if (!dir %in% c("ASC", "DESC")) .api_abort(sprintf("Unknown sort direction `%s`.", dir))
     order <- c(order, paste(entry$sort, dir, "NULLS LAST"))
   }
-  list(where = where, order = order, group = group)
+  list(where = where, order = order, group = group, score = score)
 }
 
 #' The group_by dimension: column, its `{k, d}` list SQL, include_unknown

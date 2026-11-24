@@ -243,3 +243,45 @@ test_that("openalexPro downloads grouped results from the server", {
     expect_false(anyDuplicated(got) > 0)
   }
 })
+
+test_that("classic search URLs are translated and searched locally", {
+  skip_on_cran()
+  skip_if_offline("api.openalex.org")
+  url <- local_server()
+  con <- local_fixture_con()
+  local <- function(rows) n_oqo(con, rows)
+  has <- function(column, value, neg = FALSE) {
+    list(column_id = column, value = value, operator = "has", is_negated = neg)
+  }
+  count <- function(q) call_api(url, paste0("/works?select=id&", q))$json$meta$count
+  expect_equal(count("search=tropical%20deforestation"),
+               local(list(has("fulltext.search", "tropical deforestation"))))
+  expect_equal(count("search=%22tropical%20deforestation%22"),
+               local(list(has("fulltext.search", '"tropical deforestation"'))))
+  expect_equal(count("search.exact=forests"), local(list(has("fulltext.search.exact", "forests"))))
+  expect_equal(count("search=forest%20NOT%20tropical"),
+               local(list(has("fulltext.search", "forest"), has("fulltext.search", "tropical", TRUE))))
+  expect_equal(count("filter=title.search:forest"), local(list(has("display_name.search", "forest"))))
+  r <- call_api(url, "/works?search=forest&per_page=3")
+  expect_true(all(vapply(r$json$results, function(x) !is.null(x$relevance_score), TRUE)))
+})
+
+test_that("openalexPro downloads search results from the server", {
+  skip_on_cran()
+  skip_if_offline("api.openalex.org")
+  url <- local_server()
+  con <- local_fixture_con()
+  s <- oqo_to_sql(list(get_rows = "works", filter_rows = list(list(
+    column_id = "fulltext.search", value = "forest", operator = "has"))), con)
+  want <- sort(DBI::dbGetQuery(con, paste("SELECT id FROM works WHERE", s$where))$id)
+  q <- openalexPro::pro_query(entity = "works", search = "forest", endpoint = url,
+                              options = list(per_page = 25))
+  for (via in c("url", "oqo")) {
+    out <- withr::local_tempdir()
+    openalexPro::pro_fetch(q, project_folder = out, via = via, progress = FALSE, verbose = FALSE)
+    got <- DBI::dbGetQuery(con, sprintf(
+      "SELECT id, relevance_score FROM read_parquet('%s/**/*.parquet')", out))
+    expect_equal(sort(got$id), want, label = via)
+    expect_true(all(!is.na(got$relevance_score)), label = via)
+  }
+})

@@ -186,7 +186,7 @@
         paste0("oaapi_id IN (SELECT unnest(oaapi_refs) FROM works WHERE oaapi_id = ",
                DBI::dbQuoteLiteral(con, .api_id_key(v)), ")")
       })
-  )
+  ) |> c(.api_search_entries())
 }
 
 # -- group_by keys ----------------------------------------------------------------
