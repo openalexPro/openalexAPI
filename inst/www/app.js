@@ -3,7 +3,7 @@
 "use strict";
 
 const $ = (id) => document.getElementById(id);
-const state = { mode: "classic", page: 1, lastUrl: null, groupCol: null };
+const state = { mode: "classic", page: 1, lastForm: null, groupCol: null, seq: 0 };
 const SORTS = [
   ["", "Default (relevance with a search, else most cited)"],
   ["cited_by_count:desc", "Most cited"],
@@ -39,52 +39,36 @@ function setMode(mode) {
   $("groupby").disabled = mode === "oql";
 }
 
-// The API URL (path + query) for the current form and page
-function buildUrl() {
-  const p = new URLSearchParams();
-  const grouped = state.mode === "classic" && $("groupby").value !== "";
-  let path;
-  if (state.mode === "oql") {
-    const oql = $("oqltext").value.trim();
-    if (!oql) throw new Error("Enter an OQL query.");
-    path = "/";
-    p.set("oql", oql);
-  } else {
-    path = "/works";
-    const filter = $("filter").value.trim().replace(/\s*,\s*/g, ",");
-    if (filter) p.set("filter", filter);
-    const search = $("search").value.trim();
-    if (search) p.set($("exact").checked ? "search.exact" : "search", search);
-    if (grouped) p.set("group_by", $("groupby").value);
-  }
-  if ($("sort").value) p.set("sort", $("sort").value);
-  p.set("per_page", $("perpage").value);
-  p.set("page", String(state.page));
-  if (!grouped) {
-    const sel = ["id", "display_name", "publication_year", "type", "cited_by_count", "authorships", "doi"];
-    if (state.mode === "classic" && $("search").value.trim()) sel.push("relevance_score");
-    p.set("select", sel.join(","));
-  }
-  return path + "?" + p.toString();
+// The form's values (see OAQ.buildUrl in query.js)
+function form() {
+  return {
+    mode: state.mode, oql: $("oqltext").value, filter: $("filter").value,
+    search: $("search").value, exact: $("exact").checked,
+    groupBy: state.mode === "classic" ? $("groupby").value : "",
+    sort: $("sort").value, perPage: Number($("perpage").value),
+  };
 }
 
 async function run(resetPage = true) {
   if (resetPage) state.page = 1;
   $("error").hidden = true;
+  const f = form();
   let url;
-  try { url = buildUrl(); } catch (e) { return showError(e.message); }
+  try { url = OAQ.buildUrl(f, state.page); } catch (e) { return showError(e.message); }
+  const seq = ++state.seq; // only the latest request may render
   $("run").disabled = true;
   try {
     const resp = await fetch(url, { headers: { Accept: "application/json" } });
-    const data = await resp.json();
+    const data = OAQ.parseBody(await resp.text(), resp.status);
+    if (seq !== state.seq) return;
     if (!resp.ok) return showError(errorText(data, resp.status));
-    state.lastUrl = url;
-    state.groupCol = state.mode === "classic" ? $("groupby").value : null;
+    state.lastForm = f;
+    state.groupCol = f.groupBy || null;
     render(data);
   } catch (e) {
-    showError("Request failed: " + e.message);
+    if (seq === state.seq) showError("Request failed: " + e.message);
   } finally {
-    $("run").disabled = false;
+    if (seq === state.seq) $("run").disabled = false;
   }
 }
 
@@ -108,10 +92,10 @@ function render(data) {
   $("oqlecho").hidden = !oql;
   if (oql) $("oqlecho").querySelector("code").textContent = oql;
 
-  const grouped = Array.isArray(data.group_by) && data.group_by.length > 0 && !data.results;
+  const grouped = OAQ.isGrouped(data);
   $("results").hidden = grouped;
   $("groups").hidden = !grouped;
-  if (grouped) renderGroups(data.group_by, m); else renderRecords(data.results || [], m);
+  if (grouped) renderGroups(data.group_by || [], m); else renderRecords(data.results || [], m);
 }
 
 function renderRecords(rows, m) {
@@ -154,7 +138,7 @@ function renderGroups(groups, m) {
 }
 
 function narrow(key) {
-  const value = String(key).replace(/^https:\/\/openalex\.org\/(types|languages|countries|licenses|source-types|sdgs)\//, "");
+  const value = OAQ.groupFilterValue(key);
   const f = $("filter").value.trim();
   $("filter").value = (f ? f + "," : "") + state.groupCol + ":" + value;
   $("groupby").value = "";
@@ -203,8 +187,9 @@ $("next").addEventListener("click", () => step(1));
 $("gprev").addEventListener("click", () => step(-1));
 $("gnext").addEventListener("click", () => step(1));
 $("copy").addEventListener("click", async () => {
-  if (!state.lastUrl) return;
-  const full = location.origin + state.lastUrl.replace(/([?&])page=\d+&?/, "$1").replace(/[?&]$/, "");
+  if (!state.lastForm) return;
+  // the query only, without the page's select / per_page / page
+  const full = location.origin + OAQ.buildUrl(state.lastForm);
   try { await navigator.clipboard.writeText(full); $("copy").textContent = "Copied"; }
   catch { prompt("API URL:", full); }
   setTimeout(() => { $("copy").textContent = "Copy API URL"; }, 1500);

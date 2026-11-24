@@ -123,7 +123,7 @@ serve_corpus <- function(
     json_ok(response, .api_execute(ctx, oqo, view, oql))
   }
 
-  plumber2::api() |>
+  app <- plumber2::api() |>
     plumber2::api_get("/works", guard(function(request, response, ...) {
       q <- query_of(request)
       view <- q[intersect(names(q), .api_view_params)]
@@ -181,6 +181,13 @@ serve_corpus <- function(
     plumber2::api_post("/query", guard(function(request, response, ...) {
       fwd <- .api_forward_query(body_of(request), ctx$root, key_of(request))
       json_ok(response, fwd$body, fwd$status)
-    }), serializers = raw) |>
-    plumber2::api_assets("/www", system.file("www", package = "openalexAPI"))
+    }), serializers = raw)
+  # the web page; never an empty path, which could serve the working directory
+  www <- system.file("www", package = "openalexAPI")
+  if (nzchar(www) && file.exists(file.path(www, "index.html"))) {
+    app <- plumber2::api_assets(app, "/www", www)
+  } else {
+    message("openalexAPI's web page (inst/www) was not found; serving the API only.")
+  }
+  app
 }
