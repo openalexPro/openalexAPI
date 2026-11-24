@@ -4,7 +4,9 @@
 #' OpenAlex API, so `openalexPro::pro_query(endpoint = "http://127.0.0.1:8000")`
 #' and the download functions of openalexPro work against it unchanged:
 #'
-#' * `GET /works?filter=...&sort=...&per_page=...&cursor=...`
+#' * `GET /works?filter=...&sort=...&per_page=...&cursor=...`, also with
+#'   `group_by=` (one dimension; `:include_unknown` shows works without a
+#'   value as the group `unknown`)
 #' * `GET /works/{id}` (any ID form, or a DOI)
 #' * `GET /?oql=...` and `GET /?oqo=...`, `POST /` with `oqo` or `oql` and the
 #'   view parameters `select`, `sort`, `per_page`, `page`, `cursor`
@@ -125,6 +127,11 @@ serve_corpus <- function(
       q <- query_of(request)
       view <- q[intersect(names(q), .api_view_params)]
       rest <- q[setdiff(names(q), .api_view_params)]
+      # OpenAlex's translator refuses `:include_unknown`: taken out, kept as view
+      if (!is.null(rest$group_by) && grepl(":include_unknown$", rest$group_by)) {
+        rest$group_by <- sub(":include_unknown$", "", rest$group_by)
+        view$include_unknown <- TRUE
+      }
       if (!length(rest)) {
         return(json_ok(response, .api_execute(ctx, list(get_rows = "works"), view)))
       }

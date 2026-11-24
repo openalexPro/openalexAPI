@@ -187,3 +187,42 @@ test_that("openalexPro downloads a sample spanning pages consistently", {
   }
   expect_setequal(ids[[1]], ids[[2]])
 })
+
+test_that("group_by through the API, offline (OQO) and translated (URL)", {
+  url <- local_server()
+  con <- local_fixture_con()
+  r <- call_api(url, "/", list(oqo = list(get_rows = "works",
+                                          group_by = list(list(column_id = "type")))))
+  expect_equal(r$status, 200)
+  expect_null(r$json$results)
+  expect_equal(r$json$meta$count, n_sql(con, "true"))
+  expect_equal(sum(vapply(r$json$group_by, function(g) g$count, 1)), n_sql(con, "true"))
+
+  skip_on_cran()
+  skip_if_offline("api.openalex.org")
+  u <- call_api(url, "/works?filter=type:article&group_by=publication_year")
+  expect_equal(sum(vapply(u$json$group_by, function(g) g$count, 1)),
+               n_sql(con, "type = 'article' AND publication_year IS NOT NULL"))
+  unk <- call_api(url, "/works?group_by=primary_location.source.id:include_unknown")
+  expect_equal(unk$status, 200)
+  keys <- vapply(unk$json$group_by, function(g) g$key, "")
+  expect_true("unknown" %in% keys)
+})
+
+test_that("openalexPro downloads grouped results from the server", {
+  skip_on_cran()
+  skip_if_offline("api.openalex.org")
+  url <- local_server()
+  con <- local_fixture_con()
+  want <- DBI::dbGetQuery(con, "SELECT 'https://openalex.org/types/' || type AS key,
+                                       count(*) AS n FROM works GROUP BY type")
+  q <- openalexPro::pro_query(entity = "works", group_by = "type", endpoint = url)
+  for (via in c("url", "oqo")) {
+    out <- withr::local_tempdir()
+    openalexPro::pro_fetch(q, project_folder = out, via = via, progress = FALSE, verbose = FALSE)
+    got <- DBI::dbGetQuery(con, sprintf(
+      "SELECT key, count FROM read_parquet('%s/**/*.parquet')", out))
+    expect_setequal(got$key, want$key)
+    expect_equal(got$count[match(want$key, got$key)], as.numeric(want$n), label = via)
+  }
+})

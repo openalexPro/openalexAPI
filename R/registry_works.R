@@ -188,3 +188,68 @@
       })
   )
 }
+
+# -- group_by keys ----------------------------------------------------------------
+
+#' Group keys for works: `column_id` -> SQL giving each work a list of
+#' `{k, d}` (key, display name) structs
+#'
+#' Key formats follow OpenAlex's group_by responses (surveyed live): entity IDs
+#' as stored (`https://openalex.org/T10341`), slugs of non-native entities
+#' under `https://openalex.org/<entity>/` (`types/article`, `countries/AU`),
+#' plain values for years, counts, booleans, `oa_status` and institution
+#' types. Display names are the entity's `display_name`; for countries,
+#' languages and licenses OpenAlex shows a full name ("Australia"), the corpus
+#' only has the code, which is shown instead. Columns OpenAlex cannot group by
+#' (dates, `fwci`, `doi`, `cited_by`) are absent.
+#' @keywords internal
+#' @noRd
+.api_groups_works <- function() {
+  one <- function(k, d = k) {
+    sprintf("[{'k': CAST(%s AS VARCHAR), 'd': CAST(%s AS VARCHAR)}]", k, d)
+  }
+  many <- function(lst, k, d = k) {
+    sprintf("list_transform(%s, lambda x: {'k': CAST(%s AS VARCHAR), 'd': CAST(%s AS VARCHAR)})",
+            lst, k, d)
+  }
+  pre <- function(entity, x) sprintf("'https://openalex.org/%s/' || %s", entity, x)
+  inst <- "flatten(list_transform(authorships, lambda a: a.institutions))"
+  countries <- "flatten(list_transform(authorships, lambda a: a.countries))"
+  c(
+    "type" = one(pre("types", "type"), "type"),
+    "publication_year" = one("publication_year"),
+    "language" = one(pre("languages", "language"), "language"),
+    "open_access.is_oa" = one("open_access.is_oa"),
+    "open_access.oa_status" = one("open_access.oa_status"),
+    "best_oa_location.license" = one(pre("licenses", "best_oa_location.license"),
+                                     "best_oa_location.license"),
+    "is_retracted" = one("is_retracted"),
+    "is_paratext" = one("is_paratext"),
+    "has_doi" = one("oaapi_doi IS NOT NULL"),
+    "has_abstract" = one("coalesce(oaapi_abstract, '') <> ''"),
+    "has_references" = one("coalesce(len(referenced_works), 0) > 0"),
+    "cited_by_count" = one("cited_by_count"),
+    "authors_count" = one("coalesce(len(authorships), 0)"),
+    "authorships.author.id" = many("authorships", "x.author.id", "x.author.display_name"),
+    "authorships.institutions.id" = many(inst, "x.id", "x.display_name"),
+    "authorships.institutions.country_code" = many(
+      inst, pre("countries", "upper(x.country_code)"), "upper(x.country_code)"),
+    "authorships.institutions.type" = many(inst, "x.type"),
+    "authorships.countries" = many(countries, pre("countries", "upper(x)"), "upper(x)"),
+    "primary_location.source.id" = one("primary_location.source.id",
+                                       "primary_location.source.display_name"),
+    "primary_location.source.type" = one(pre("source-types", "primary_location.source.type"),
+                                         "primary_location.source.type"),
+    "primary_topic.id" = one("primary_topic.id", "primary_topic.display_name"),
+    "primary_topic.field.id" = one("primary_topic.field.id",
+                                   "primary_topic.field.display_name"),
+    "primary_topic.domain.id" = one("primary_topic.domain.id",
+                                    "primary_topic.domain.display_name"),
+    "topics.id" = many("topics", "x.id", "x.display_name"),
+    "keywords.id" = many("keywords", "x.id", "x.display_name"),
+    "sustainable_development_goals.id" = many(
+      "sustainable_development_goals", pre("sdgs", "id_key(x.id)"), "x.display_name"),
+    "ids.openalex" = one("id"),
+    "referenced_works" = many("referenced_works", "x")
+  )
+}

@@ -9,7 +9,12 @@
   OQL are translated by OpenAlex's free `/query`; an OQO runs offline.
 - `oqo_to_sql()` compiles an OQO to DuckDB SQL: AND / OR / negation, sort,
   `null` values (field missing), and 33 of the most-used works filters.
-  Search and `group_by` come next.
+  Search comes next.
+- `group_by` (one dimension): works counted once per key, keys and response
+  shape as OpenAlex's (`group_by` with `key`, `key_display_name`, `count`;
+  no `results`), sorted by count or key, paged; `:include_unknown` adds the
+  works without a value. Countries, languages and licenses show the code as
+  display name (OpenAlex shows the full name).
 - Parquet files that hold no works (e.g. snowball edges, collection
   `members/`) are skipped; a sample spanning pages is the same on every page;
   `GET /works/{id}` also takes a DOI and `select`.

@@ -15,8 +15,11 @@ oqo_to_sql(oqo, con, columns = NULL)
 are refused. \code{NULL} skips the check.}
 }
 \value{
-A list with \code{where} (SQL condition, \code{"true"} without filters) and
-\code{order} (SQL \verb{ORDER BY} terms from \code{sort_by}, or \code{NULL}).
+A list with \code{where} (SQL condition, \code{"true"} without filters),
+\code{order} (SQL \verb{ORDER BY} terms from \code{sort_by}, or \code{NULL}; with \code{group_by}
+terms on \code{n} (count) and \code{k} (key)) and \code{group} (\code{NULL}, or the
+\code{group_by} dimension: \code{column}, \code{pairs} (SQL giving each work a list of
+\verb{\{k, d\}} key / display-name structs) and \code{include_unknown}).
 }
 \description{
 Walks the filter tree of an OQO (OpenAlex Query Object): the top-level

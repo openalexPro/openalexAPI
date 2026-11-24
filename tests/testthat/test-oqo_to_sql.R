@@ -89,8 +89,8 @@ test_that("unsupported input stops with a clear 400", {
   # values are quoted, never pasted into the SQL
   expect_equal(n_oqo(con, list(leaf("type", "x' OR 1=1 --"))), 0)
   expect_error(oqo_to_sql(list(get_rows = "authors"), con), "Only works")
-  expect_error(oqo_to_sql(list(get_rows = "works", group_by = list(list(column_id = "type"))),
-                          con), "group_by")
+  expect_equal(oqo_to_sql(list(get_rows = "works", group_by = list(list(column_id = "type"))),
+                          con)$group$column, "type")
 })
 
 test_that("sort_by becomes ORDER BY terms", {
