@@ -177,7 +177,17 @@ prepare_corpus <- function(
 #' @keywords internal
 #' @noRd
 .api_report_merged_types <- function(types) {
-  n <- table(types$column_name)
+  # compare the kind of type only (VARCHAR, BIGINT, STRUCT, STRUCT[], ...):
+  # structs differing in field order or in nested fields are merged by name,
+  # which is harmless
+  kind <- types$column_type
+  repeat {
+    k <- gsub("\\([^()]*\\)", "", kind)
+    if (identical(k, kind)) break
+    kind <- k
+  }
+  kinds <- unique(data.frame(column_name = types$column_name, kind = kind))
+  n <- table(kinds$column_name)
   mixed <- names(n)[n > 1]
   for (col in mixed) {
     message("Column `", col, "` has different types in different files (",
