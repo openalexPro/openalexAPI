@@ -16,6 +16,8 @@ local_fixture_con <- function(name = "corpus_jq", env = parent.frame()) {
 # Number of works matching an OQO, through oqo_to_sql()
 n_oqo <- function(con, filter_rows, columns = NULL) {
   s <- oqo_to_sql(list(get_rows = "works", filter_rows = filter_rows), con, columns)
+  drop <- openalexAPI:::.api_run_prelude(con, s)
+  on.exit(drop())
   DBI::dbGetQuery(con, paste("SELECT count(*) AS n FROM works WHERE", s$where))$n
 }
 

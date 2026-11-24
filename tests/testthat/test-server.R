@@ -273,7 +273,9 @@ test_that("openalexPro downloads search results from the server", {
   con <- local_fixture_con()
   s <- oqo_to_sql(list(get_rows = "works", filter_rows = list(list(
     column_id = "fulltext.search", value = "forest", operator = "has"))), con)
+  drop <- openalexAPI:::.api_run_prelude(con, s)
   want <- sort(DBI::dbGetQuery(con, paste("SELECT id FROM works WHERE", s$where))$id)
+  drop()
   q <- openalexPro::pro_query(entity = "works", search = "forest", endpoint = url,
                               options = list(per_page = 25))
   for (via in c("url", "oqo")) {

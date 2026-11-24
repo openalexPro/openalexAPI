@@ -60,7 +60,15 @@
 #' @noRd
 .api_re_escape <- function(x) gsub("([.^$|()\\[\\]{}+*?\\\\])", "\\\\\\1", x, perl = TRUE)
 
-#' One search column: `cond()` gives the condition, `score()` the BM25 score
+#' One search column: `parts()` splits a value into its BM25 query and checks
+#'
+#' `parts()` returns `bm25` (the FTS `match_bm25()` call over `table`, or
+#' `NULL` when the value has only wildcards) and `regex` (phrase and wildcard
+#' checks on the text). `oqo_to_sql()` computes each BM25 query once per
+#' request into a temp table of matching works and scores (see its
+#' `prelude`): a per-work BM25 call per term made queries with many search
+#' terms unusably slow (a 20-term OR took 21 s on 11,000 works, OpenAlex's
+#' 114-term systematic-review example did not finish).
 #' @keywords internal
 #' @noRd
 .api_search_entry <- function(fields, exact) {
@@ -70,48 +78,33 @@
     "title" = "coalesce(oaapi_title, '')",
     "abstract" = "coalesce(oaapi_abstract, '')"
   )
-  terms <- function(p) {
-    unlist(c(p$words, strsplit(trimws(p$phrases), "\\s+")))
-  }
-  bm25 <- function(p, con) {
-    t <- terms(p)
-    if (!length(t)) return(NULL)
-    paste0(fts, ".match_bm25(oaapi_id, ", DBI::dbQuoteLiteral(con, paste(t, collapse = " ")),
-           ", fields := '", fields, "', conjunctive := 1)")
-  }
-  # The match as a set of IDs, computed once per term: a per-work BM25 call
-  # inside a deep AND/OR tree makes DuckDB unusably slow (a 114-term
-  # systematic-review strategy did not finish in minutes; this way, 5 s)
-  matches <- function(score) {
-    paste0("oaapi_id IN (SELECT oaapi_id FROM ", sub("^fts_main_", "", fts),
-           " WHERE ", score, " IS NOT NULL)")
-  }
   regex <- function(re, con) {
     paste0("regexp_matches(", text, ", ", DBI::dbQuoteLiteral(con, paste0("(?i)", re)), ")")
   }
   list(
     need = "id", sort = NULL, missing = NULL, search = TRUE,
-    cond = function(op, v, con, column) {
+    parts = function(op, v, con, column) {
       .api_op_has(op, column)
       p <- .api_search_parse(v, column, exact)
-      score <- bm25(p, con)
-      parts <- c(
-        if (!is.null(score)) matches(score),
-        vapply(p$phrases, function(ph) {
-          w <- .api_re_escape(strsplit(trimws(ph), "\\s+")[[1]])
-          regex(paste0("\\b", paste(w, collapse = "\\W+"), "\\b"), con)
-        }, ""),
-        vapply(p$wild, function(w) {
-          re <- gsub("\\\\\\*", "\\\\w*", gsub("\\\\\\?", "\\\\w", .api_re_escape(w)))
-          regex(paste0("\\b", re, "\\b"), con)
-        }, "")
+      terms <- unlist(c(p$words, strsplit(trimws(p$phrases), "\\s+")))
+      list(
+        table = sub("^fts_main_", "", fts),
+        bm25 = if (length(terms)) {
+          paste0(fts, ".match_bm25(oaapi_id, ",
+                 DBI::dbQuoteLiteral(con, paste(terms, collapse = " ")),
+                 ", fields := '", fields, "', conjunctive := 1)")
+        },
+        regex = c(
+          vapply(p$phrases, function(ph) {
+            w <- .api_re_escape(strsplit(trimws(ph), "\\s+")[[1]])
+            regex(paste0("\\b", paste(w, collapse = "\\W+"), "\\b"), con)
+          }, ""),
+          vapply(p$wild, function(w) {
+            re <- gsub("\\\\\\*", "\\\\w*", gsub("\\\\\\?", "\\\\w", .api_re_escape(w)))
+            regex(paste0("\\b", re, "\\b"), con)
+          }, "")
+        )
       )
-      paste0("(", paste(parts, collapse = " AND "), ")")
-    },
-    # wildcards alone have no BM25 terms: score 0, so records still carry
-    # relevance_score
-    score = function(op, v, con, column) {
-      bm25(.api_search_parse(v, column, exact), con) %||% "0"
     }
   )
 }

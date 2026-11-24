@@ -18,8 +18,11 @@
 #'   terms on `n` (count), `k` (key) and `u` (1 for the unknown group)) and
 #'   `group` (`NULL`, or the `group_by` dimension: `column`, `pairs` (SQL
 #'   giving each work a list of `{g, k, d}` identity / key / display-name
-#'   structs) and `include_unknown`), and `score` (the BM25 relevance of
-#'   the search leaves that are not negated, or `NULL` without a search).
+#'   structs) and `include_unknown`), `score` (the BM25 relevance of the
+#'   search leaves that are not negated, or `NULL` without a search), and
+#'   `prelude` (SQL statements to run first: each search term's matches and
+#'   scores as a temp table, computed once) with `temp` (their names, to
+#'   drop afterwards). Run with `.api_run_prelude()`.
 #' @export
 oqo_to_sql <- function(oqo, con, columns = NULL) {
   registry <- .api_registry_works()
@@ -31,7 +34,21 @@ oqo_to_sql <- function(oqo, con, columns = NULL) {
     # corpus choice is meaningless locally: the corpus is what was downloaded
     oqo$corpus <- NULL
   }
-  scores <- character(0) # BM25 of the search leaves that are not negated
+  # search terms: each BM25 query once, as a temp table oaapi_s<n>(i, s)
+  fts <- character(0)      # BM25 query -> temp table name
+  prelude <- character(0)
+  positive <- character(0) # tables of the search leaves that are not negated
+  any_search <- FALSE
+  fts_table <- function(bm25, table) {
+    if (!is.na(fts[bm25])) return(unname(fts[bm25]))
+    name <- paste0("oaapi_s", length(fts) + 1L)
+    fts[bm25] <<- name
+    prelude <<- c(prelude, paste0(
+      "CREATE OR REPLACE TEMP TABLE ", name, " AS SELECT * FROM (SELECT oaapi_id AS i, ",
+      bm25, " AS s FROM ", table, ") WHERE s IS NOT NULL"
+    ))
+    name
+  }
   node <- function(x, negated = FALSE) {
     neg <- isTRUE(x$is_negated)
     negated <- xor(negated, neg)
@@ -75,19 +92,34 @@ oqo_to_sql <- function(oqo, con, columns = NULL) {
     if (length(x$value) != 1L) {
       .api_abort(sprintf("`%s` needs a single value.", column))
     }
-    if (!is.null(entry$score) && !negated) {
-      s <- entry$score(op, x$value, con, column)
-      if (!is.null(s)) scores <<- c(scores, paste0("coalesce(", s, ", 0)"))
+    cond <- if (isTRUE(entry$search)) {
+      any_search <<- TRUE
+      p <- entry$parts(op, x$value, con, column)
+      tbl <- if (!is.null(p$bm25)) fts_table(p$bm25, p$table)
+      if (!is.null(tbl) && !negated) positive <<- c(positive, tbl)
+      paste0("(", paste(c(if (!is.null(tbl)) paste0("oaapi_id IN (SELECT i FROM ", tbl, ")"),
+                          p$regex), collapse = " AND "), ")")
+    } else {
+      entry$cond(op, x$value, con, column)
     }
     # never NULL: a missing value does not match, and its negation does
-    paste0("coalesce(", entry$cond(op, x$value, con, column), ", false)")
+    paste0("coalesce(", cond, ", false)")
   }
   where <- if (length(oqo$filter_rows)) {
     paste(vapply(oqo$filter_rows, node, ""), collapse = " AND ")
   } else {
     "true"
   }
-  score <- if (length(scores)) paste(scores, collapse = " + ")
+  # relevance: the sum of the non-negated leaves' scores, one lookup per work
+  score <- if (length(positive)) {
+    prelude <- c(prelude, paste0(
+      "CREATE OR REPLACE TEMP TABLE oaapi_score AS SELECT i, sum(s) AS s FROM (",
+      paste0("SELECT i, s FROM ", positive, collapse = " UNION ALL "), ") GROUP BY i"
+    ))
+    "coalesce((SELECT oaapi_score.s FROM oaapi_score WHERE oaapi_score.i = oaapi_id), 0)"
+  } else if (any_search) {
+    "CAST(0 AS DOUBLE)" # wildcards only: no BM25; a bare 0 in ORDER BY is a column number
+  }
   order <- NULL
   for (s in oqo$sort_by) {
     if (identical(s$column_id, "relevance_score") && is.null(group)) {
@@ -118,7 +150,20 @@ oqo_to_sql <- function(oqo, con, columns = NULL) {
     if (!dir %in% c("ASC", "DESC")) .api_abort(sprintf("Unknown sort direction `%s`.", dir))
     order <- c(order, paste(entry$sort, dir, "NULLS LAST"))
   }
-  list(where = where, order = order, group = group, score = score)
+  temp <- c(unname(fts), if (length(positive)) "oaapi_score")
+  list(where = where, order = order, group = group, score = score,
+       prelude = prelude, temp = temp)
+}
+
+#' Run an OQO's prelude (search terms as temp tables); returns a function
+#' that drops them again
+#' @keywords internal
+#' @noRd
+.api_run_prelude <- function(con, sql) {
+  for (stmt in sql$prelude) .api_get(con, stmt, exec = TRUE)
+  function() {
+    for (t in sql$temp) DBI::dbExecute(con, paste("DROP TABLE IF EXISTS", t))
+  }
 }
 
 #' The group_by dimension: column, its `{k, d}` list SQL, include_unknown
@@ -143,5 +188,8 @@ oqo_to_sql <- function(oqo, con, columns = NULL) {
   if (!is.null(columns) && !all(need %in% columns)) {
     .api_abort(sprintf("Column `%s` is not available in this corpus.", column))
   }
-  list(column = column, pairs = unname(pairs), include_unknown = unknown)
+  # OpenAlex lists both values of a true/false column, also with count 0
+  boolean <- column %in% c("open_access.is_oa", "is_retracted", "is_paratext", "has_doi",
+                           "has_abstract", "has_references")
+  list(column = column, pairs = unname(pairs), include_unknown = unknown, boolean = boolean)
 }

@@ -107,3 +107,14 @@ test_that("a deep tree of many search terms runs in reasonable time", {
   expect_lt(t, 60)
   expect_equal(n, n_oqo(con, list(group(words))))
 })
+
+test_that("a wildcard-only search can be sorted by relevance", {
+  con <- local_fixture_con()
+  ctx <- list(con = con, columns = DBI::dbGetQuery(con, "DESCRIBE works")$column_name,
+              served = openalexAPI:::.api_served_columns(con))
+  r <- jsonlite::fromJSON(openalexAPI:::.api_execute(ctx, list(get_rows = "works",
+    filter_rows = list(has("fulltext.search.exact", "defor*"))), list(per_page = 2)),
+    simplifyVector = FALSE)
+  expect_gt(r$meta$count, 0)
+  expect_equal(r$results[[1]]$relevance_score, 0)
+})

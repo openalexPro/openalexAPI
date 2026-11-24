@@ -41,6 +41,8 @@
     oqo$sort_by <- .api_parse_sort(view$sort) # a sibling `sort` wins
   }
   sql <- oqo_to_sql(oqo, con, ctx$columns)
+  drop_temp <- .api_run_prelude(con, sql) # search terms, computed once
+  on.exit(drop_temp(), add = TRUE)
   if (!is.null(sql$group)) {
     if (!is.null(oqo$sample)) .api_abort("`sample` cannot be combined with `group_by`.")
     return(.api_execute_groups(ctx, oqo, sql, view, oql, t0))
@@ -157,8 +159,11 @@
       "WHERE coalesce(len(ks), 0) = 0 HAVING count(*) > 0"
     )
   }
+  if (isTRUE(sql$group$boolean)) {
+    groups <- paste(groups, "UNION ALL SELECT k, k, k, 0, 0 FROM (VALUES ('true'), ('false')) v(k)")
+  }
   # a real value `unknown` and the unknown group are one group (their works
-  # are disjoint: with a key, without one)
+  # are disjoint: with a key, without one); the zero rows above merge likewise
   .api_get(con, paste(
     "CREATE OR REPLACE TEMP TABLE oaapi_g AS",
     "SELECT g, min(k) AS k, min(d) AS d, sum(n) AS n, max(u) AS u FROM (", groups, ")",
