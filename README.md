@@ -13,6 +13,7 @@ main](https://img.shields.io/github/actions/workflow/status/openalexPro/openalex
 [![dev](https://img.shields.io/github/r-package/v/openalexPro/openalexAPI/dev?label=dev)](https://github.com/openalexPro/openalexAPI/tree/dev)
 [![CI
 dev](https://img.shields.io/github/actions/workflow/status/openalexPro/openalexAPI/R-CMD-check.yaml?branch=dev&label=CI%20dev)](https://github.com/openalexPro/openalexAPI/actions/workflows/R-CMD-check.yaml?query=branch%3Adev)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24514237.svg)](https://doi.org/10.5281/zenodo.24514237)
 [![License:
 MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Docs](https://img.shields.io/badge/docs-pkgdown-blue)](https://openalexpro.github.io/openalexAPI/)
