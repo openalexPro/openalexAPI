@@ -4,7 +4,8 @@
 #' `filter_rows` are joined with AND, a branch with its `join` (`and` /
 #' `or`), and `is_negated` negates a leaf or branch. Each leaf goes through
 #' the works column registry. A leaf whose value is missing never matches,
-#' and its negation does, as with `!` in OpenAlex. The SQL refers to the
+#' and its negation does, as with `!` in OpenAlex; a `null` leaf value
+#' matches works where the field is missing. The SQL refers to the
 #' `works` table built by [prepare_corpus()].
 #'
 #' @param oqo An OQO as a list (e.g. from `jsonlite::fromJSON(x,
@@ -54,14 +55,18 @@ oqo_to_sql <- function(oqo, con, columns = NULL) {
     if (!is.null(columns) && !all(entry$need %in% columns)) {
       .api_abort(sprintf("Column `%s` is not available in this corpus.", column))
     }
+    op <- x$operator %||% "is" # an equality leaf has no operator key
     if (is.null(x$value)) {
-      .api_abort(sprintf("`%s` needs a value.", column))
+      # `null`: works where the field is missing
+      if (is.null(entry$missing) || op != "is") {
+        .api_abort(sprintf("`%s` needs a value.", column))
+      }
+      return(paste0("coalesce(", entry$missing, ", false)"))
     }
     if (is.list(x$value) && length(x$value) == 1L) x$value <- x$value[[1]]
     if (length(x$value) != 1L) {
       .api_abort(sprintf("`%s` needs a single value.", column))
     }
-    op <- x$operator %||% "is" # an equality leaf has no operator key
     # never NULL: a missing value does not match, and its negation does
     paste0("coalesce(", entry$cond(op, x$value, con, column), ", false)")
   }

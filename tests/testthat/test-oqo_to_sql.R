@@ -102,3 +102,47 @@ test_that("sort_by becomes ORDER BY terms", {
   expect_error(oqo_to_sql(list(sort_by = list(list(column_id = "authorships.countries"))), con),
                "Cannot sort")
 })
+
+test_that("a null value matches works where the field is missing", {
+  con <- local_fixture_con()
+  total <- n_sql(con, "true")
+  missing <- list(list(column_id = "primary_location.source.id", value = NULL))
+  n <- n_sql(con, "primary_location.source.id IS NULL")
+  expect_gt(n, 0)
+  expect_equal(n_oqo(con, missing), n)
+  missing[[1]]$is_negated <- TRUE
+  expect_equal(n_oqo(con, missing), total - n)
+  expect_equal(n_oqo(con, list(list(column_id = "has_references", value = NULL))) |>
+                 tryCatch(oaapi_error = function(e) "refused"), "refused")
+  expect_equal(n_oqo(con, list(list(column_id = "referenced_works", value = NULL))),
+               n_sql(con, "coalesce(len(oaapi_refs), 0) = 0"))
+})
+
+test_that("malformed numbers are a 400, not invalid SQL", {
+  con <- local_fixture_con()
+  for (v in c("1.2.3", ".", "1e", "")) {
+    e <- tryCatch(n_oqo(con, list(leaf("cited_by_count", v, ">"))), oaapi_error = function(e) e)
+    expect_s3_class(e, "oaapi_error")
+    expect_match(conditionMessage(e), "number")
+  }
+  expect_equal(n_oqo(con, list(leaf("cited_by_count", "10", ">"))), n_sql(con, "cited_by_count > 10"))
+})
+
+test_that("a struct field the corpus lacks is a 400", {
+  dir <- withr::local_tempdir()
+  con0 <- DBI::dbConnect(duckdb::duckdb())
+  DBI::dbExecute(con0, sprintf(
+    "COPY (SELECT * REPLACE ({'is_oa': open_access.is_oa} AS open_access)
+     FROM read_parquet('%s/**/*.parquet', union_by_name = true))
+     TO '%s/w.parquet' (FORMAT parquet)", fixture("corpus_jq"), dir))
+  DBI::dbDisconnect(con0, shutdown = TRUE)
+  con <- openalexAPI:::.api_open(prepare_corpus(dir, cache_dir = withr::local_tempdir()))
+  on.exit(DBI::dbDisconnect(con, shutdown = TRUE))
+  ctx <- list(con = con, columns = DBI::dbGetQuery(con, "DESCRIBE works")$column_name,
+              served = openalexAPI:::.api_served_columns(con))
+  e <- tryCatch(openalexAPI:::.api_execute(ctx, list(get_rows = "works", filter_rows = list(
+    leaf("open_access.oa_status", "gold")))), oaapi_error = function(e) e)
+  expect_s3_class(e, "oaapi_error")
+  expect_equal(e$status, 400L)
+  expect_match(conditionMessage(e), "not available")
+})

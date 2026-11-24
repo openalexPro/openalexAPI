@@ -6,6 +6,7 @@
 #   need: top-level corpus columns it needs (else "not available")
 #   cond: function(op, value, con) -> SQL condition
 #   sort: SQL expression to sort by (scalars only), or NULL
+#   missing: SQL condition for a `null` value (field missing), or NULL
 #
 # Adding a column: one entry here and one test.
 
@@ -23,10 +24,11 @@
 # -- value checks ---------------------------------------------------------------
 
 .api_num <- function(v, column) {
-  if (!is.numeric(v) && !(is.character(v) && grepl("^-?[0-9.]+$", v))) {
+  n <- if (is.numeric(v) || is.character(v)) suppressWarnings(as.numeric(v)) else NA
+  if (length(n) != 1L || !is.finite(n)) {
     .api_abort(sprintf("`%s` needs a number, not `%s`.", column, format(v)))
   }
-  format(as.numeric(v), scientific = FALSE)
+  format(n, scientific = FALSE)
 }
 
 .api_bool <- function(v, column) {
@@ -56,16 +58,20 @@
 
 # -- entry constructors -----------------------------------------------------------
 
+# A list that is missing or empty
+.reg_empty <- function(expr) paste0("coalesce(len(", expr, "), 0) = 0")
+
 # A number column (`>`, `>=`, `<`, `<=`, `is`)
 .reg_num <- function(expr, need) {
-  list(need = need, sort = expr, cond = function(op, v, con, column) {
+  list(need = need, sort = expr, missing = paste(expr, "IS NULL"), cond = function(op, v, con, column) {
     paste(expr, .api_op(op, column), .api_num(v, column))
   })
 }
 
 # A date column; `fixed_op` for from_/to_publication_date
 .reg_date <- function(expr, need, fixed_op = NULL) {
-  list(need = need, sort = expr, cond = function(op, v, con, column) {
+  list(need = need, sort = expr, missing = if (is.null(fixed_op)) paste(expr, "IS NULL"),
+       cond = function(op, v, con, column) {
     if (!is.null(fixed_op)) {
       .api_op(op, column, "is")
       op <- fixed_op
@@ -76,7 +82,7 @@
 
 # A string column, compared ignoring case
 .reg_str <- function(expr, need) {
-  list(need = need, sort = expr, cond = function(op, v, con, column) {
+  list(need = need, sort = expr, missing = paste(expr, "IS NULL"), cond = function(op, v, con, column) {
     .api_op(op, column, "is")
     paste0("lower(", expr, ") = lower(", DBI::dbQuoteLiteral(con, as.character(v)), ")")
   })
@@ -84,7 +90,7 @@
 
 # A list of strings, any element matching (ignoring case)
 .reg_str_list <- function(expr, need) {
-  list(need = need, sort = NULL, cond = function(op, v, con, column) {
+  list(need = need, sort = NULL, missing = .reg_empty(expr), cond = function(op, v, con, column) {
     .api_op(op, column, "is")
     paste0("list_contains(list_transform(", expr, ", lambda x: lower(x)), lower(",
            DBI::dbQuoteLiteral(con, as.character(v)), "))")
@@ -93,7 +99,7 @@
 
 # An ID column, compared on id_key()
 .reg_id <- function(expr, need) {
-  list(need = need, sort = NULL, cond = function(op, v, con, column) {
+  list(need = need, sort = NULL, missing = paste(expr, "IS NULL"), cond = function(op, v, con, column) {
     .api_op(op, column, "is")
     paste0("id_key(", expr, ") = ", DBI::dbQuoteLiteral(con, .api_id_key(v)))
   })
@@ -101,7 +107,7 @@
 
 # A list of IDs, any element matching on id_key()
 .reg_id_list <- function(expr, need) {
-  list(need = need, sort = NULL, cond = function(op, v, con, column) {
+  list(need = need, sort = NULL, missing = .reg_empty(expr), cond = function(op, v, con, column) {
     .api_op(op, column, "is")
     paste0("list_contains(list_transform(", expr, ", lambda x: id_key(x)), ",
            DBI::dbQuoteLiteral(con, .api_id_key(v)), ")")
@@ -163,13 +169,13 @@
       "list_transform(sustainable_development_goals, lambda s: s.id)",
       "sustainable_development_goals"),
     "ids.openalex" = .reg_id("id", "id"),
-    "doi" = list(need = "doi", sort = NULL, cond = function(op, v, con, column) {
+    "doi" = list(need = "doi", sort = NULL, missing = "oaapi_doi IS NULL", cond = function(op, v, con, column) {
       .api_op(op, column, "is")
       paste0("oaapi_doi = ", DBI::dbQuoteLiteral(con, .api_doi_key(v)))
     }),
     # `cites:` -- works of the corpus whose references contain the ID
     "referenced_works" = list(need = "referenced_works", sort = NULL,
-      cond = function(op, v, con, column) {
+      missing = .reg_empty("oaapi_refs"), cond = function(op, v, con, column) {
         .api_op(op, column, "is")
         paste0("list_contains(oaapi_refs, ", DBI::dbQuoteLiteral(con, .api_id_key(v)), ")")
       }),

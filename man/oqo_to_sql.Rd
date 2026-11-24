@@ -23,6 +23,7 @@ Walks the filter tree of an OQO (OpenAlex Query Object): the top-level
 \code{filter_rows} are joined with AND, a branch with its \code{join} (\code{and} /
 \code{or}), and \code{is_negated} negates a leaf or branch. Each leaf goes through
 the works column registry. A leaf whose value is missing never matches,
-and its negation does, as with \code{!} in OpenAlex. The SQL refers to the
+and its negation does, as with \code{!} in OpenAlex; a \code{null} leaf value
+matches works where the field is missing. The SQL refers to the
 \code{works} table built by \code{\link[=prepare_corpus]{prepare_corpus()}}.
 }

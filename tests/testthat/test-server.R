@@ -60,7 +60,6 @@ test_that("sort, sample with seed, and single works", {
   expect_equal(one$status, 200)
   expect_equal(one$json$id, id)
   expect_null(one$json$meta)
-  expect_true("abstract_inverted_index" %in% names(one$json) || is.null(one$json$abstract))
   expect_equal(call_api(url, paste0("/works/", utils::URLencode(id, reserved = TRUE)))$json$id, id)
   expect_equal(call_api(url, "/works/W1")$status, 404)
 })
@@ -117,4 +116,49 @@ test_that("openalexPro downloads from the server like from OpenAlex", {
       "oaapi_abstract IS NOT NULL AND list_contains(['%s'], id)",
       paste(want, collapse = "','"))), label = via)
   }
+})
+
+test_that("a single work carries the inverted index, by ID or DOI, with select", {
+  url <- local_server()
+  con <- local_fixture_con()
+  w <- DBI::dbGetQuery(con, "SELECT id, doi FROM works
+    WHERE oaapi_abstract IS NOT NULL AND doi IS NOT NULL ORDER BY id LIMIT 1")
+  one <- call_api(url, paste0("/works/", sub("^.*/", "", w$id)))$json
+  expect_gt(length(one$abstract_inverted_index), 0)
+  expect_false(any(c("abstract", "citation", "page") %in% names(one)))
+  doi <- sub("^https://doi.org/", "", w$doi)
+  for (form in c(w$doi, paste0("doi:", doi), doi)) {
+    r <- call_api(url, paste0("/works/", form, "?select=id,doi"))
+    expect_equal(r$json, list(id = w$id, doi = w$doi), label = form)
+  }
+})
+
+test_that("a sample spanning pages is the same on every page, seeded or not", {
+  url <- local_server()
+  ids <- function(oqo) {
+    out <- character(0)
+    cursor <- "*"
+    while (!is.null(cursor)) {
+      r <- call_api(url, "/", list(oqo = oqo, per_page = 25, cursor = cursor, select = "id"))
+      out <- c(out, vapply(r$json$results, function(x) x$id, ""))
+      cursor <- r$json$meta$next_cursor
+    }
+    out
+  }
+  for (oqo in list(list(get_rows = "works", sample = 60),
+                   list(get_rows = "works", sample = 60, seed = "7"))) {
+    a <- ids(oqo)
+    expect_length(a, 60)
+    expect_false(anyDuplicated(a) > 0)
+    expect_equal(ids(oqo), a)
+  }
+})
+
+test_that("`+` in a classic query means a space", {
+  skip_on_cran()
+  skip_if_offline("api.openalex.org")
+  url <- local_server()
+  con <- local_fixture_con()
+  expect_equal(call_api(url, "/?oql=works+where+type+is+article")$json$meta$count,
+               n_sql(con, "type = 'article'"))
 })

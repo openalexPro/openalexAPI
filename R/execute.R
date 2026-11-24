@@ -58,12 +58,20 @@
 
   from <- paste("(SELECT * FROM works WHERE", sql$where, ")")
   if (!is.null(oqo$sample)) {
+    # Every page draws the sample again, so it must be the same each time: a
+    # seed (derived from the query when none is given), rows in a fixed order,
+    # and one thread (DuckDB repeats a seeded sample only single-threaded)
     n <- .api_int(oqo$sample, "sample", NA_integer_)
-    seed <- if (is.null(oqo$seed)) "" else
-      paste0(" REPEATABLE (", strtoi(substr(.api_md5(as.character(oqo$seed)), 1, 7), 16L), ")")
-    from <- paste0("(SELECT * FROM ", from, " USING SAMPLE reservoir(", n, " ROWS)", seed, ")")
+    seed <- oqo$seed %||% .api_json(oqo[setdiff(names(oqo), c("sort_by", "seed"))])
+    seed <- strtoi(substr(.api_md5(as.character(seed)), 1, 7), 16L)
+    from <- paste0("(SELECT * FROM (SELECT * FROM works WHERE ", sql$where,
+                   " ORDER BY oaapi_id) USING SAMPLE reservoir(", n, " ROWS) REPEATABLE (",
+                   seed, "))")
+    threads <- DBI::dbGetQuery(con, "SELECT current_setting('threads') AS t")$t
+    DBI::dbExecute(con, "SET threads = 1")
+    on.exit(DBI::dbExecute(con, paste("SET threads =", threads)), add = TRUE)
   }
-  count <- DBI::dbGetQuery(con, paste("SELECT count(*) AS n FROM", from, "w"))$n
+  count <- .api_get(con, paste("SELECT count(*) AS n FROM", from, "w"))$n
 
   order <- sql$order
   if (!length(order) && "cited_by_count" %in% ctx$columns) {
@@ -73,7 +81,7 @@
 
   cols <- .api_select(view$select, ctx$served)
   q <- DBI::dbQuoteIdentifier(con, cols)
-  rows <- DBI::dbGetQuery(con, paste0(
+  rows <- .api_get(con, paste0(
     "SELECT to_json(struct_pack(", paste0(q, " := ", q, collapse = ", "), "))::VARCHAR AS j ",
     "FROM ", from, " w ORDER BY ", paste(order, collapse = ", "),
     " LIMIT ", per_page, " OFFSET ", offset
@@ -101,17 +109,40 @@
 #' One work by ID (any form), or 404
 #' @keywords internal
 #' @noRd
-.api_single <- function(ctx, id) {
+.api_single <- function(ctx, id, select = NULL) {
   con <- ctx$con
-  q <- DBI::dbQuoteIdentifier(con, ctx$served)
-  j <- DBI::dbGetQuery(con, paste0(
+  q <- DBI::dbQuoteIdentifier(con, .api_select(select, ctx$served))
+  is_doi <- grepl("^(doi:|https?://(dx\\.)?doi\\.org/|10\\.)", id, ignore.case = TRUE)
+  where <- if (is_doi) {
+    paste("oaapi_doi =", DBI::dbQuoteLiteral(con, .api_doi_key(id)))
+  } else {
+    paste("oaapi_id =", DBI::dbQuoteLiteral(con, .api_id_key(id)))
+  }
+  j <- .api_get(con, paste0(
     "SELECT to_json(struct_pack(", paste0(q, " := ", q, collapse = ", "), "))::VARCHAR AS j ",
-    "FROM works WHERE oaapi_id = ", DBI::dbQuoteLiteral(con, .api_id_key(id))
+    "FROM works WHERE ", where, " LIMIT 1"
   ))$j
   if (!length(j)) {
     .api_abort(sprintf("Work `%s` is not in this corpus.", id), 404L)
   }
   j[[1]]
+}
+
+#' Run a query; a field the corpus lacks (DuckDB binder error) is a 400
+#'
+#' The registry checks only top-level columns; a struct field can still be
+#' missing in corpora with an older or narrower schema.
+#' @keywords internal
+#' @noRd
+.api_get <- function(con, sql) {
+  tryCatch(DBI::dbGetQuery(con, sql), error = function(e) {
+    msg <- conditionMessage(e)
+    if (!grepl("Binder Error", msg, fixed = TRUE)) stop(e)
+    .api_abort(paste0(
+      "A field of this query is not available in this corpus (",
+      sub("\n.*", "", sub("^.*Binder Error: ", "", msg)), ")."
+    ))
+  })
 }
 
 #' Columns to return for `select` (comma-separated), checked

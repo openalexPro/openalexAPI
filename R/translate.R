@@ -5,6 +5,7 @@
 # and one code path serves both.
 
 .api_cache <- new.env(parent = emptyenv())
+.api_cache_max <- 500L
 
 #' POST a body to OpenAlex's /query; status and body text, unchanged
 #'
@@ -49,6 +50,9 @@
   if (resp$status != 200L || is.null(out$oqo) || isFALSE(out$validation$valid)) {
     .api_abort("OpenAlex could not translate the query.",
                status = if (resp$status == 200L) 400L else resp$status, body = resp$body)
+  }
+  if (length(.api_cache) >= .api_cache_max) {
+    rm(list = ls(.api_cache, all.names = TRUE), envir = .api_cache) # ponytail: drop all, not LRU
   }
   assign(key, out, envir = .api_cache)
   out

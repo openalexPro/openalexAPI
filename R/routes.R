@@ -5,7 +5,7 @@
 #' and the download functions of openalexPro work against it unchanged:
 #'
 #' * `GET /works?filter=...&sort=...&per_page=...&cursor=...`
-#' * `GET /works/{id}` (any ID form)
+#' * `GET /works/{id}` (any ID form, or a DOI)
 #' * `GET /?oql=...` and `GET /?oqo=...`, `POST /` with `oqo` or `oql` and the
 #'   view parameters `select`, `sort`, `per_page`, `page`, `cursor`
 #' * `POST /query`: forwarded to OpenAlex (translation)
@@ -91,7 +91,9 @@ serve_corpus <- function(
     if (length(h) && grepl("^Bearer ", h)) sub("^Bearer ", "", h) else ctx$api_key
   }
   query_of <- function(request) {
-    q <- httr2::url_parse(paste0("http://x/", request$querystring))$query %||% list()
+    # form encoding: `+` is a space (a literal plus arrives as %2B)
+    qs <- gsub("+", "%20", request$querystring, fixed = TRUE)
+    q <- httr2::url_parse(paste0("http://x/", qs))$query %||% list()
     q[setdiff(names(q), .api_drop_params)]
   }
   body_of <- function(request) {
@@ -132,8 +134,10 @@ serve_corpus <- function(
       ))
       run(request, response, list(oxurl = oxurl), view)
     }), serializers = raw) |>
-    plumber2::api_get("/works/<id>", guard(function(request, response, id, ...) {
-      json_ok(response, .api_single(ctx, utils::URLdecode(id)))
+    # any ID form, also an unencoded URL with slashes (https://doi.org/10.x/y)
+    plumber2::api_get("/works/*", guard(function(request, response, ...) {
+      id <- utils::URLdecode(sub("^/works/", "", request$path))
+      json_ok(response, .api_single(ctx, id, query_of(request)$select))
     }), serializers = raw) |>
     plumber2::api_get("/corpus", guard(function(request, response, ...) {
       reg <- .api_registry_works()

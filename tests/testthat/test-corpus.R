@@ -39,3 +39,38 @@ test_that("abstracts: text for search, inverted index served, added columns hidd
     expect_false(any(startsWith(served, "oaapi_")))
   }
 })
+
+test_that("Parquet files that hold no works are skipped", {
+  dir <- withr::local_tempdir()
+  file.copy(list.files(fixture("corpus_api"), full.names = TRUE), dir)
+  con0 <- DBI::dbConnect(duckdb::duckdb())
+  DBI::dbExecute(con0, sprintf(
+    "COPY (SELECT 'W1' AS \"from\", 'W2' AS \"to\") TO '%s/edges.parquet' (FORMAT parquet)", dir))
+  dir.create(file.path(dir, "members"))
+  DBI::dbExecute(con0, sprintf(
+    "COPY (SELECT 'W9' AS id, now() AS added_at) TO '%s/members/m.parquet' (FORMAT parquet)", dir))
+  DBI::dbDisconnect(con0, shutdown = TRUE)
+  expect_message(db <- prepare_corpus(dir, cache_dir = withr::local_tempdir()), "Skipping 2")
+  con <- openalexAPI:::.api_open(db)
+  on.exit(DBI::dbDisconnect(con, shutdown = TRUE))
+  expect_equal(n_sql(con, "true"), 2)
+  expect_equal(n_sql(con, "id IS NULL"), 0)
+})
+
+test_that("the build version is part of the cache key", {
+  cache <- withr::local_tempdir()
+  db1 <- prepare_corpus(fixture("corpus_api"), cache_dir = cache)
+  local_mocked_bindings(.api_build_version = "test")
+  expect_false(identical(prepare_corpus(fixture("corpus_api"), cache_dir = cache), db1))
+})
+
+test_that("the translation cache is capped", {
+  local_mocked_bindings(.api_forward_query = function(body, root, api_key = NULL) {
+    list(status = 200L, body = '{"oqo":{"get_rows":"works"},"validation":{"valid":true}}')
+  }, .api_cache_max = 3L)
+  cache <- openalexAPI:::.api_cache
+  rm(list = ls(cache, all.names = TRUE), envir = cache)
+  for (i in 1:5) openalexAPI:::.api_translate(list(oql = paste("q", i)), "http://x")
+  expect_lte(length(cache), 3L)
+  expect_true(length(cache) >= 1L)
+})

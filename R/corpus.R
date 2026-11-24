@@ -28,7 +28,8 @@ prepare_corpus <- function(
     stop("No Parquet files found in `", corpus, "`.", call. = FALSE)
   }
   info <- file.info(files)
-  key <- .api_md5(c(corpus, paste(files, info$size, as.numeric(info$mtime))))
+  key <- .api_md5(c(.api_build_version, corpus,
+                    paste(files, info$size, as.numeric(info$mtime))))
   db <- file.path(cache_dir, paste0(key, ".duckdb"))
   if (file.exists(db) && !isTRUE(rebuild)) {
     return(invisible(db))
@@ -49,6 +50,12 @@ prepare_corpus <- function(
   invisible(db)
 }
 
+#' Version of the database layout; part of the cache key, so a cache built by
+#' a version with another layout is rebuilt. Bump it when `.api_build()` changes.
+#' @keywords internal
+#' @noRd
+.api_build_version <- "1"
+
 #' Columns added by openalexPro or a query, not OpenAlex fields: never served
 #' @keywords internal
 #' @noRd
@@ -58,6 +65,7 @@ prepare_corpus <- function(
 #' @keywords internal
 #' @noRd
 .api_build <- function(con, files) {
+  files <- .api_works_files(con, files)
   src <- paste0(
     "read_parquet(", .api_sql_list(con, files),
     ", union_by_name = true, hive_partitioning = false)"
@@ -81,13 +89,37 @@ prepare_corpus <- function(
     if (has("referenced_works")) "list_transform(referenced_works, lambda x: id_key(x))" else
       "NULL::VARCHAR[]", " AS oaapi_refs, ",
     abstract_text, " AS oaapi_abstract ",
-    "FROM ", src, " ",
+    "FROM ", src, " WHERE id IS NOT NULL ",
     "QUALIFY row_number() OVER (PARTITION BY id_key(id) ORDER BY id) = 1"
   ))
   if (!has("abstract_inverted_index")) {
     .api_add_inverted_index(con)
   }
   invisible(con)
+}
+
+#' The files that hold works: an `id` and a `title` or `display_name` column
+#'
+#' A project folder can hold other tables too (openalexSnowball edges, the
+#' `members/` of a collection); they are skipped with a message.
+#' @keywords internal
+#' @noRd
+.api_works_files <- function(con, files) {
+  is_works <- vapply(files, function(f) {
+    cols <- DBI::dbGetQuery(con, paste0(
+      "DESCRIBE SELECT * FROM read_parquet(", DBI::dbQuoteLiteral(con, f), ")"
+    ))$column_name
+    "id" %in% cols && any(c("title", "display_name") %in% cols)
+  }, TRUE)
+  if (!any(is_works)) {
+    stop("None of the Parquet files holds works (columns `id` and `title` or ",
+         "`display_name`).", call. = FALSE)
+  }
+  if (!all(is_works)) {
+    message("Skipping ", sum(!is_works), " Parquet file(s) that hold no works, e.g. ",
+            files[!is_works][[1]])
+  }
+  files[is_works]
 }
 
 #' Rebuild `abstract_inverted_index` from the abstract text (JSONL-path corpora)

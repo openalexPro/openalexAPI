@@ -8,7 +8,11 @@
   `GET /corpus`), so openalexPro downloads from it unchanged. Classic URLs and
   OQL are translated by OpenAlex's free `/query`; an OQO runs offline.
 - `oqo_to_sql()` compiles an OQO to DuckDB SQL: AND / OR / negation, sort,
-  and 33 of the most-used works filters. Search and `group_by` come next.
+  `null` values (field missing), and 33 of the most-used works filters.
+  Search and `group_by` come next.
+- Parquet files that hold no works (e.g. snowball edges, collection
+  `members/`) are skipped; a sample spanning pages is the same on every page;
+  `GET /works/{id}` also takes a DOI and `select`.
 - New package. Skeleton, DuckDB connection helper, and a recorded survey of
   how OpenAlex's `/query` endpoint translates classic filters and searches
   into OQO (`tools/spike_translate.R`, `inst/extdata/oqo_translations.csv`),
