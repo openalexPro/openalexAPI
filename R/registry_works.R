@@ -137,9 +137,14 @@
     "publication_year" = .reg_num("publication_year", "publication_year"),
     "from_publication_date" = .reg_date("publication_date", "publication_date", ">="),
     "to_publication_date" = .reg_date("publication_date", "publication_date", "<="),
+    "publication_date" = .reg_date("publication_date", "publication_date"),
+    "from_created_date" = .reg_date("TRY_CAST(created_date AS DATE)", "created_date", ">="),
+    "to_created_date" = .reg_date("TRY_CAST(created_date AS DATE)", "created_date", "<="),
     "language" = .reg_str("language", "language"),
     "open_access.is_oa" = .reg_bool("coalesce(open_access.is_oa, false)", "open_access"),
     "open_access.oa_status" = .reg_str("open_access.oa_status", "open_access"),
+    "open_access.any_repository_has_fulltext" = .reg_bool(
+      "coalesce(open_access.any_repository_has_fulltext, false)", "open_access"),
     "best_oa_location.license" = .reg_str("best_oa_location.license", "best_oa_location"),
     "is_retracted" = .reg_bool("coalesce(is_retracted, false)", "is_retracted"),
     "is_paratext" = .reg_bool("coalesce(is_paratext, false)", "is_paratext"),
@@ -148,6 +153,14 @@
     "has_references" = .reg_bool("coalesce(len(referenced_works), 0) > 0", "referenced_works"),
     "cited_by_count" = .reg_num("cited_by_count", "cited_by_count"),
     "fwci" = .reg_num("fwci", "fwci"),
+    "citation_normalized_percentile.value" = .reg_num(
+      "citation_normalized_percentile.value", "citation_normalized_percentile"),
+    "citation_normalized_percentile.is_in_top_1_percent" = .reg_bool(
+      "coalesce(citation_normalized_percentile.is_in_top_1_percent, false)",
+      "citation_normalized_percentile"),
+    "citation_normalized_percentile.is_in_top_10_percent" = .reg_bool(
+      "coalesce(citation_normalized_percentile.is_in_top_10_percent, false)",
+      "citation_normalized_percentile"),
     "authors_count" = .reg_num("coalesce(len(authorships), 0)", "authorships"),
     "authorships.author.id" = .reg_id_list(
       "list_transform(authorships, lambda a: a.author.id)", "authorships"),
@@ -157,10 +170,26 @@
     "authorships.institutions.type" = .reg_str_list(inst_list("type"), "authorships"),
     "authorships.countries" = .reg_str_list(
       "flatten(list_transform(authorships, lambda a: a.countries))", "authorships"),
+    # an institution or any institution above it (OpenAlex's `institutions` lineage)
+    "authorships.institutions.lineage" = .reg_id_list(paste0(
+      "flatten(list_transform(authorships, lambda a: ",
+      "flatten(list_transform(a.institutions, lambda i: i.lineage))))"), "authorships"),
+    "authorships.author.orcid" = .reg_id_list(
+      "list_transform(authorships, lambda a: a.author.orcid)", "authorships"),
+    "funders.id" = .reg_id_list("list_transform(funders, lambda f: f.id)", "funders"),
     "primary_location.source.id" = .reg_id("primary_location.source.id", "primary_location"),
     "primary_location.source.type" = .reg_str("primary_location.source.type",
                                               "primary_location"),
+    "primary_location.source.issn" = .reg_str_list("primary_location.source.issn",
+                                                   "primary_location"),
+    # publisher lineage: OpenAlex's translator emits the host_organization name,
+    # its v2 OQL examples the publisher_lineage one
+    "primary_location.source.host_organization_lineage" = .reg_id_list(
+      "primary_location.source.host_organization_lineage", "primary_location"),
+    "primary_location.source.publisher_lineage" = .reg_id_list(
+      "primary_location.source.host_organization_lineage", "primary_location"),
     "primary_topic.id" = .reg_id("primary_topic.id", "primary_topic"),
+    "primary_topic.subfield.id" = .reg_id("primary_topic.subfield.id", "primary_topic"),
     "primary_topic.field.id" = .reg_id("primary_topic.field.id", "primary_topic"),
     "primary_topic.domain.id" = .reg_id("primary_topic.domain.id", "primary_topic"),
     "topics.id" = .reg_id_list("list_transform(topics, lambda t: t.id)", "topics"),
@@ -169,6 +198,8 @@
       "list_transform(sustainable_development_goals, lambda s: s.id)",
       "sustainable_development_goals"),
     "ids.openalex" = .reg_id("id", "id"),
+    "ids.pmid" = .reg_id("ids.pmid", "ids"),
+    "ids.pmcid" = .reg_id("ids.pmcid", "ids"),
     "doi" = list(need = "doi", sort = NULL, missing = "oaapi_doi IS NULL", cond = function(op, v, con, column) {
       .api_op(op, column, "is")
       paste0("oaapi_doi = ", DBI::dbQuoteLiteral(con, .api_doi_key(v)))
@@ -230,6 +261,11 @@
     "language" = one(pre("languages", "language"), "language"),
     "open_access.is_oa" = one("open_access.is_oa"),
     "open_access.oa_status" = one("open_access.oa_status"),
+    "open_access.any_repository_has_fulltext" = one("open_access.any_repository_has_fulltext"),
+    "citation_normalized_percentile.is_in_top_1_percent" = one(
+      "citation_normalized_percentile.is_in_top_1_percent"),
+    "citation_normalized_percentile.is_in_top_10_percent" = one(
+      "citation_normalized_percentile.is_in_top_10_percent"),
     "best_oa_location.license" = one(pre("licenses", "best_oa_location.license"),
                                      "best_oa_location.license"),
     "is_retracted" = one("is_retracted"),
@@ -246,10 +282,24 @@
       inst, pre("countries", "upper(x.country_code)"), "upper(x.country_code)"),
     "authorships.institutions.type" = many(inst, "x.type"),
     "authorships.countries" = many(countries, pre("countries", "upper(x)"), "upper(x)"),
+    # lineage: the name is known where the ID is the work's own institution
+    "authorships.institutions.lineage" = paste0(
+      "flatten(list_transform(authorships, lambda a: flatten(list_transform(a.institutions, ",
+      "lambda i: list_transform(i.lineage, lambda x: ", pair("x",
+      "CASE WHEN x = i.id THEN i.display_name END", "id_key(x)"), ")))))"),
+    "authorships.author.orcid" = many("authorships", "x.author.orcid", id = TRUE),
+    "funders.id" = many("funders", "x.id", "x.display_name", id = TRUE),
     "primary_location.source.id" = one("primary_location.source.id",
                                        "primary_location.source.display_name", id = TRUE),
     "primary_location.source.type" = one(pre("source-types", "primary_location.source.type"),
                                          "primary_location.source.type"),
+    "primary_location.source.issn" = many("primary_location.source.issn", "x"),
+    "primary_location.source.host_organization_lineage" = many(
+      "primary_location.source.host_organization_lineage", "x", id = TRUE),
+    "primary_location.source.publisher_lineage" = many(
+      "primary_location.source.host_organization_lineage", "x", id = TRUE),
+    "primary_topic.subfield.id" = one("primary_topic.subfield.id",
+                                      "primary_topic.subfield.display_name", id = TRUE),
     "primary_topic.id" = one("primary_topic.id", "primary_topic.display_name", id = TRUE),
     "primary_topic.field.id" = one("primary_topic.field.id",
                                    "primary_topic.field.display_name", id = TRUE),

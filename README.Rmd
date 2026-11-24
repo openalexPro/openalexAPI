@@ -89,15 +89,19 @@ compiles the OQO into SQL. An OQO sent directly runs without network access.
 
 ## What is supported
 
-- **33 works filters:** the most used ones, including type, year and dates,
-  language, open access, citations, authors, institutions, countries,
-  sources, topics, keywords, SDGs, IDs, DOIs, `cites` and `cited_by`. AND, OR
+- **49 works filters:** type, year and dates (also the creation date),
+  language, open access, citations and percentiles, authors and ORCIDs,
+  institutions (also with their lineage), countries, funders, sources, ISSNs,
+  publishers, topics down to subfields, keywords, SDGs, IDs (OpenAlex, DOI,
+  PMID, PMCID), `cites` and `cited_by`. AND, OR
   (`a|b`), negation (`!a`), ranges, and `null` for "field missing" all work.
 - **`group_by`** on one dimension, with OpenAlex's key formats. `:include_unknown`
   is supported.
 - **Full-text search** over title and abstract, with `search`, `search.exact`
-  and the `<field>.search` filters. All words must match, quoted phrases must
-  appear in order, and wildcards work with `.exact`. Results are ranked by
+  and the `<field>.search` filters, plus searches in affiliation strings and
+  author names. All words must match, quoted phrases must
+  appear in order, proximity (`"a"~N~"b"`, `"a b"~N`) works, and wildcards
+  work with `.exact`. Results are ranked by
   `relevance_score` (BM25).
 - **Records** are returned as stored, including fields that are not
   OpenAlex's. You can use `select`, `sort`, `per_page`, `page`, `cursor` and
@@ -108,10 +112,13 @@ compiles the OQO into SQL. An OQO sent directly runs without network access.
 - **Local data:** counts come from the corpus, not from all of OpenAlex.
 - **Search** covers title and abstract only, because there is no full text.
   The stemmer folds more word forms than OpenAlex's, so stemmed counts can be
-  higher. Proximity search (`"a b"~N`) is not supported.
+  higher. Proximity allows up to N words between the terms, an approximation
+  of OpenAlex's.
 - **Display names:** countries, languages and licenses use the code as the
   display name in `group_by` results ("AU" rather than "Australia").
-- **Unsupported filters** (e.g. affiliation-string search) get a clear HTTP
-  400 that names them.
+- **Unsupported features** get a clear HTTP 400 that names them: OpenAlex
+  collections, semantic search, `group_by` on several dimensions, and OQL's
+  comparisons and nested queries. 156 of OpenAlex's 174 OQL example queries
+  run locally (`tools/oql_coverage.R`).
 
 See `vignette("openalexAPI")` for the details.

@@ -82,10 +82,9 @@ test_that("unsupported search input is a 400", {
   con <- local_fixture_con()
   err <- function(rows) tryCatch(n_oqo(con, rows), oaapi_error = function(e) conditionMessage(e))
   expect_match(err(list(has("fulltext.search", "defor*"))), "exact")
-  expect_match(err(list(has("fulltext.search", '"a b"~3'))), "Proximity")
   expect_match(err(list(has("fulltext.search", '"open'))), "quote")
   expect_match(err(list(has("fulltext.search", "  "))), "needs search terms")
-  expect_match(err(list(has("raw_affiliation_strings.search", "zurich"))), "not supported")
+  expect_match(err(list(has("no_such_field.search", "zurich"))), "not supported")
   expect_match(err(list(list(column_id = "fulltext.search", value = "x", operator = ">"))),
                "Operator")
 })
@@ -117,4 +116,26 @@ test_that("a wildcard-only search can be sorted by relevance", {
     simplifyVector = FALSE)
   expect_gt(r$meta$count, 0)
   expect_equal(r$results[[1]]$relevance_score, 0)
+})
+
+test_that("proximity: terms within N words, any order or (classic) in order", {
+  con <- local_fixture_con()
+  ex <- "fulltext.search.exact"
+  gap <- "\\W+(?:\\w+\\W+){0,3}"
+  any_order <- n_re(con, paste0("\\b(?:tropical", gap, "deforestation|deforestation", gap, "tropical)\\b"))
+  expect_gt(any_order, 0)
+  expect_equal(n_oqo(con, list(has(ex, '"tropical"~3~"deforestation"'))), any_order)
+  expect_equal(n_oqo(con, list(has(ex, '"deforestation"~3~"tropical"'))), any_order)
+  in_order <- n_re(con, paste0("\\btropical", gap, "deforestation\\b"))
+  expect_equal(n_oqo(con, list(has(ex, '"tropical deforestation"~3'))), in_order)
+  expect_lte(in_order, any_order)
+  # wildcards inside proximity need the exact search; a stemmed one is refused
+  expect_gt(n_oqo(con, list(has(ex, '"tropical"~3~"defor*"'))), 0)
+  expect_error(n_oqo(con, list(has("fulltext.search", '"tropical"~3~"defor*"'))), "exact")
+  # within one affiliation string
+  aff <- "flatten(list_transform(authorships, lambda a: a.raw_affiliation_strings))"
+  one <- n_sql(con, sprintf(paste0("coalesce(list_bool_or(list_transform(%s, lambda s: regexp_matches(s, ",
+    "'(?i)\\b(?:columbia\\W+(?:\\w+\\W+){0,2}university|university\\W+(?:\\w+\\W+){0,2}columbia)\\b'))), false)"), aff))
+  expect_gt(one, 0)
+  expect_equal(n_oqo(con, list(has("raw_affiliation_strings.search.exact", '"columbia"~2~"university"'))), one)
 })

@@ -128,5 +128,17 @@ delete `README.html`.
 ## Branching
 
 - `claude/<description>` branches from `dev`; merge into `dev`; `main` gets release commits only.
-- Milestones 3-7 are stacked PRs (#1 filters, #2 group_by, #3 search, #4 page, #5 docs); merge
-  in order.
+- Stacked PRs, merge in order: #1 filters, #2 group_by, #3 search, #4 page, #5 docs,
+  #6 performance, #7 more filters (lineage, funders, affiliation/author search, proximity, ...).
+
+## Coverage and parity
+
+- `tools/oql_coverage.R` runs OpenAlex's OQL example corpus (156 of 174 runnable works queries
+  run; the rest need collections, semantic search, multi-dimension `group_by`, comparisons or
+  nested `in (...)` queries). Run it after adding registry columns.
+- `tools/live_parity.R` compares counts and groups with OpenAlex on a downloaded corpus; filter
+  and group checks must be equal, full-text searches differ (OpenAlex also searches full
+  texts).
+- Affiliation and author-name searches (`.api_list_search_entry()`) are regex over the lists,
+  not FTS: words may come from different strings, a phrase must be within one (OpenAlex's rule
+  for these fields). Proximity is `.api_prox_re()`: up to N words between terms.

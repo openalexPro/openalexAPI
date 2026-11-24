@@ -203,12 +203,12 @@ for `pro_fetch()`.
 
 | Area | Filters |
 |---|---|
-| work | `type`, `publication_year`, `from_publication_date`, `to_publication_date`, `language`, `is_retracted`, `is_paratext`, `has_doi`, `has_abstract`, `has_references` |
-| open access | `open_access.is_oa`, `open_access.oa_status`, `best_oa_location.license` |
-| counts | `cited_by_count`, `fwci`, `authors_count` |
-| people and places | `authorships.author.id`, `authorships.institutions.id`, `authorships.institutions.country_code`, `authorships.institutions.type`, `authorships.countries` |
-| source and topics | `primary_location.source.id`, `primary_location.source.type`, `primary_topic.id`, `primary_topic.field.id`, `primary_topic.domain.id`, `topics.id`, `keywords.id`, `sustainable_development_goals.id` |
-| identifiers and citations | `ids.openalex`, `doi`, `referenced_works` (`cites:`), `cited_by` |
+| work | `type`, `publication_year`, `publication_date`, `from_publication_date`, `to_publication_date`, `from_created_date`, `to_created_date`, `language`, `is_retracted`, `is_paratext`, `has_doi`, `has_abstract`, `has_references` |
+| open access | `open_access.is_oa`, `open_access.oa_status`, `open_access.any_repository_has_fulltext`, `best_oa_location.license` |
+| counts | `cited_by_count`, `fwci`, `authors_count`, `citation_normalized_percentile.value`, `citation_normalized_percentile.is_in_top_1_percent`, `citation_normalized_percentile.is_in_top_10_percent` |
+| people and places | `authorships.author.id`, `authorships.author.orcid`, `authorships.institutions.id`, `authorships.institutions.lineage`, `authorships.institutions.country_code`, `authorships.institutions.type`, `authorships.countries`, `funders.id` |
+| source and topics | `primary_location.source.id`, `primary_location.source.type`, `primary_location.source.issn`, `primary_location.source.publisher_lineage` (= `host_organization_lineage`), `primary_topic.id`, `primary_topic.subfield.id`, `primary_topic.field.id`, `primary_topic.domain.id`, `topics.id`, `keywords.id`, `sustainable_development_goals.id` |
+| identifiers and citations | `ids.openalex`, `ids.pmid`, `ids.pmcid`, `doi`, `referenced_works` (`cites:`), `cited_by` |
 
 The query structure is the same as in OpenAlex:
 
@@ -219,7 +219,9 @@ The query structure is the same as in OpenAlex:
 
 A negated filter also matches works without the field, as in OpenAlex.
 `cites` and `cited_by` work within the corpus: `cited_by:W1` lists the works
-of the corpus that W1 cites.
+of the corpus that W1 cites. `authorships.institutions.lineage` matches an
+institution and every institution below it (a university finds its
+faculties).
 
 # group_by
 
@@ -252,12 +254,17 @@ There is no full text locally. The searches run over title and abstract:
 | `filter=title.search:` (`display_name.search`) | title |
 | `filter=abstract.search:` | abstract |
 | `search.exact=` and the `.search.exact` filters | the same, without stemming or stop words |
+| `filter=raw_affiliation_strings.search:` | the authors' affiliation strings |
+| `filter=raw_author_name.search:` | the authors' names as printed |
 
 The search rules follow OpenAlex:
 
 - **Words:** all words must match. `coral bleaching` finds works with both.
 - **Phrases:** `"coral bleaching"` must appear in this order.
 - **Boolean operators:** `AND`, `OR` and `NOT` work between terms.
+- **Proximity:** `"coral"~3~"bleaching"` finds the terms with up to 3
+  words between them, in either order. The classic `"coral bleaching"~3`
+  keeps the order.
 - **Wildcards:** `bleach*` works with the exact search only.
 - **Relevance:** results are ranked by `relevance_score` (BM25), which each
   record carries. It is the default sort when searching, and
@@ -267,7 +274,12 @@ The differences from OpenAlex:
 
 - the stemmer (Porter) folds more word forms than OpenAlex's, so stemmed
   counts can be higher; exact searches are closer;
-- proximity search (`"a b"~N`) is not supported;
+- proximity is "up to N words between the terms", an approximation of
+  OpenAlex's slop;
+- affiliation and author-name searches match whole words, without
+  stemming, and add nothing to `relevance_score`. As in OpenAlex, unquoted
+  words may come from different affiliations of a work, a quoted phrase must
+  be within one;
 - searches of fields the corpus does not index (e.g. affiliation strings) are
   a 400.
 

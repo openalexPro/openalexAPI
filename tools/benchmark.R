@@ -104,6 +104,12 @@ cases <- list(
   "search + filters + sort relevance" = list(q(list(S("fulltext.search", "bleaching"),
     L("type", "article")), sort = list(list(column_id = "relevance_score", direction = "desc")))),
   "search + group_by country" = list(q(list(S("fulltext.search", "bleaching")), group = "authorships.countries")),
+  "lineage" = list(q(list(L("authorships.institutions.lineage", inst)))),
+  "funders" = list(q(list(L("funders.id", "F4320306076")))),
+  "affiliation search (words)" = list(q(list(S("raw_affiliation_strings.search.exact", "james cook university")))),
+  "affiliation search (phrase)" = list(q(list(S("raw_affiliation_strings.search.exact", '"james cook university"')))),
+  "author name search" = list(q(list(S("raw_author_name.search", "hughes")))),
+  "proximity search" = list(q(list(S("fulltext.search.exact", '"coral"~3~"bleaching"')))),
   "OpenAlex example: 114-term search" = if (!is.null(row78)) list(row78)
 )
 for (g in names(openalexAPI:::.api_groups_works())) {
