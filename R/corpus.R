@@ -54,7 +54,7 @@ prepare_corpus <- function(
 #' a version with another layout is rebuilt. Bump it when `.api_build()` changes.
 #' @keywords internal
 #' @noRd
-.api_build_version <- "5"
+.api_build_version <- "6"
 
 #' Columns added by openalexPro or a query, not OpenAlex fields: never served
 #' @keywords internal
@@ -79,6 +79,14 @@ prepare_corpus <- function(
     stop("The corpus has no `id` column.", call. = FALSE)
   }
   has <- function(x) x %in% cols
+  # row order is irrelevant (every sort ends on id); lets DuckDB stream the
+  # build instead of holding it in memory
+  DBI::dbExecute(con, "SET preserve_insertion_order = false")
+  # the window function keeps whole rows in memory (9.6 million snapshot works
+  # ran out of 29 GB), so deduplicate only when there are duplicates
+  dups <- DBI::dbGetQuery(con, paste(
+    "SELECT count(*) - count(DISTINCT id_key(id)) AS n FROM", src, "WHERE id IS NOT NULL"
+  ))$n > 0
   # the snapshot stores the inverted index as a JSON string (cast in `casts`)
   aii_text <- has("abstract_inverted_index") &&
     !grepl("^MAP\\(", desc$column_type[desc$column_name == "abstract_inverted_index"])
@@ -113,7 +121,7 @@ prepare_corpus <- function(
     if (has("title")) "title" else if (has("display_name")) "display_name" else "NULL::VARCHAR",
     " AS oaapi_title ",
     "FROM ", src, " WHERE id IS NOT NULL ",
-    "QUALIFY row_number() OVER (PARTITION BY id_key(id) ORDER BY id) = 1"
+    if (dups) "QUALIFY row_number() OVER (PARTITION BY id_key(id) ORDER BY id) = 1"
   ))
   if (!has("abstract_inverted_index")) {
     .api_add_inverted_index(con)

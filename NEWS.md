@@ -4,6 +4,8 @@
   `abstract_inverted_index` is a JSON string, now read as a map. Records whose
   index repeats a word (about 0.6 % in the snapshot) keep their abstract, with
   the positions merged. Cached databases are rebuilt once.
+- Building the database needs less memory: works are deduplicated only when
+  the corpus has duplicates, and rows are not kept in order.
 
 # openalexAPI 0.1.1
 
