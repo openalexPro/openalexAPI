@@ -1,6 +1,7 @@
 # Build the server image (docker/Dockerfile) for amd64 and arm64 and publish it
 # as ghcr.io/openalexpro/openalexapi. Releases get the version tags and
-# `latest`; a manual run gets the branch name (e.g. `dev`).
+# `latest` (pre-releases: no `latest`); a manual run gets the branch name
+# (e.g. `dev`).
 # Each architecture builds on its own native runner (no emulation), then one
 # multi-architecture tag is made from the two digests.
 on:
@@ -92,6 +93,8 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.IMAGE }}
+          # a GitHub pre-release gets its version tag, not `latest`
+          flavor: latest=${{ github.event_name == 'release' && !github.event.release.prerelease }}
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
