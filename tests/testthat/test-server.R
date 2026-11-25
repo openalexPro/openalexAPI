@@ -109,7 +109,7 @@ test_that("openalexPro downloads from the server like from OpenAlex", {
                               options = list(per_page = 10))
   for (via in c("url", "oqo")) {
     out <- withr::local_tempdir()
-    openalexPro::pro_fetch(q, project_folder = out, via = via, progress = FALSE, verbose = FALSE)
+    fetch(q, project_folder = out, via = via, progress = FALSE, verbose = FALSE)
     pages <- list.files(out, "^results_page_[0-9]+\\.parquet$", recursive = TRUE)
     expect_length(pages, ceiling(length(want) / 10))
     got <- DBI::dbGetQuery(con, sprintf(
@@ -175,7 +175,7 @@ test_that("openalexPro downloads a sample spanning pages consistently", {
                               options = list(sample = 45, seed = 3, per_page = 10))
   ids <- lapply(c("url", "oqo"), function(via) {
     out <- withr::local_tempdir()
-    openalexPro::pro_fetch(q, project_folder = out, via = via, progress = FALSE,
+    fetch(q, project_folder = out, via = via, progress = FALSE,
                            verbose = FALSE)
     con <- DBI::dbConnect(duckdb::duckdb())
     on.exit(DBI::dbDisconnect(con, shutdown = TRUE), add = TRUE)
@@ -219,7 +219,7 @@ test_that("openalexPro downloads grouped results from the server", {
   q <- openalexPro::pro_query(entity = "works", group_by = "type", endpoint = url)
   for (via in c("url", "oqo")) {
     out <- withr::local_tempdir()
-    openalexPro::pro_fetch(q, project_folder = out, via = via, progress = FALSE, verbose = FALSE)
+    fetch(q, project_folder = out, via = via, progress = FALSE, verbose = FALSE)
     got <- DBI::dbGetQuery(con, sprintf(
       "SELECT key, count FROM read_parquet('%s/**/*.parquet')", out))
     expect_setequal(got$key, want$key)
@@ -234,7 +234,7 @@ test_that("openalexPro downloads grouped results from the server", {
                               endpoint = url, options = list(per_page = 5))
   for (via in c("url", "oqo")) {
     out <- withr::local_tempdir()
-    openalexPro::pro_fetch(q, project_folder = out, via = via, progress = FALSE, verbose = FALSE)
+    fetch(q, project_folder = out, via = via, progress = FALSE, verbose = FALSE)
     pages <- list.files(out, "^group_by_page_[0-9]+\\.parquet$", recursive = TRUE)
     expect_length(pages, ceiling(want / 5))
     got <- DBI::dbGetQuery(con, sprintf(
@@ -280,7 +280,7 @@ test_that("openalexPro downloads search results from the server", {
                               options = list(per_page = 25))
   for (via in c("url", "oqo")) {
     out <- withr::local_tempdir()
-    openalexPro::pro_fetch(q, project_folder = out, via = via, progress = FALSE, verbose = FALSE)
+    fetch(q, project_folder = out, via = via, progress = FALSE, verbose = FALSE)
     got <- DBI::dbGetQuery(con, sprintf(
       "SELECT id, relevance_score FROM read_parquet('%s/**/*.parquet')", out))
     expect_equal(sort(got$id), want, label = via)
@@ -318,4 +318,16 @@ test_that("the web page is served; `/` stays JSON for queries", {
   q <- utils::URLencode('{"get_rows":"works"}', reserved = TRUE)
   r <- get(paste0("/?oqo=", q, "&per_page=1"))
   expect_equal(httr2::resp_content_type(r), "application/json")
+})
+
+test_that("online tests skip on OpenAlex's 5xx, not on the server's own crash", {
+  skips <- function(status, text = "{}") {
+    inherits(tryCatch(skip_if_upstream_5xx(status, text), condition = identity), "skip")
+  }
+  expect_false(skips(200))
+  expect_false(skips(400))
+  expect_true(skips(504, "<html>Gateway Timeout</html>"))
+  expect_true(skips(503, '{"error":"Internal error","message":"OpenAlex unreachable"}'))
+  expect_true(skips(500, '{"error":"oops"}'))
+  expect_false(skips(500, '{"error":"Internal error","message":"bug"}'))
 })
