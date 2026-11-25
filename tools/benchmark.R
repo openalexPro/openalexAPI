@@ -10,11 +10,17 @@
 #
 # Run from the package root:  Rscript tools/benchmark.R
 # Writes: tools/benchmark.csv
+#
+# OAAPI_BENCH_CORPUS=<folder of works Parquet files> benchmarks that corpus
+# instead (e.g. a snapshot partition), with its own cached database;
+# OAAPI_BENCH_OUT=<file.csv> writes the results there.
 
 pkgload::load_all(quiet = TRUE)
 
 corpus <- file.path(tools::R_user_dir("openalexAPI", "cache"), "bench_corpus")
-if (!dir.exists(file.path(corpus, "parquet"))) {
+own <- Sys.getenv("OAAPI_BENCH_CORPUS")
+parquet <- if (nzchar(own)) normalizePath(own) else file.path(corpus, "parquet")
+if (!nzchar(own) && !dir.exists(parquet)) {
   message("Downloading the benchmark corpus...")
   openalexPro::pro_fetch(
     openalexPro::pro_query(entity = "works", primary_topic.id = "T10341",
@@ -25,8 +31,9 @@ if (!dir.exists(file.path(corpus, "parquet"))) {
 
 # the prepared database is kept between runs; OAAPI_BENCH_REBUILD=true times a fresh build
 cache <- file.path(tools::R_user_dir("openalexAPI", "cache"), "bench_db")
+if (nzchar(own)) cache <- file.path(cache, substr(openalexAPI:::.api_md5(parquet), 1, 8))
 if (identical(Sys.getenv("OAAPI_BENCH_REBUILD"), "true")) unlink(cache, recursive = TRUE)
-t_prep <- system.time(db <- suppressMessages(prepare_corpus(file.path(corpus, "parquet"),
+t_prep <- system.time(db <- suppressMessages(prepare_corpus(parquet,
                                                             cache_dir = cache)))[["elapsed"]]
 con <- openalexAPI:::.api_open(db)
 on.exit(DBI::dbDisconnect(con, shutdown = TRUE), add = TRUE)
@@ -144,7 +151,7 @@ out <- do.call(rbind, lapply(names(cases), function(nm) {
   data.frame(case = nm, seconds = r$seconds, result = r$result)
 }))
 out <- out[order(-out$seconds), ]
-utils::write.csv(out, "tools/benchmark.csv", row.names = FALSE)
+utils::write.csv(out, Sys.getenv("OAAPI_BENCH_OUT", "tools/benchmark.csv"), row.names = FALSE)
 cat(sprintf("\n%d works, prepare_corpus() %.1f s\n\n", n_works, t_prep))
 print(out, row.names = FALSE)
 cat(sprintf("\nslow (> 1 s): %d of %d\n", sum(out$seconds > 1), nrow(out)))
