@@ -76,7 +76,11 @@ Exported:
   Not served: `.api_not_served` (`page`, `citation`, `abstract`,
   `relevance_score`) and `oaapi_*`. `abstract_inverted_index` is rebuilt
   for JSONL-path corpora (round-trips exactly). Filter columns whose
-  type differs between files are cast back (`.api_column_types`).
+  type differs between files are cast back (`.api_column_types`). The
+  snapshot’s `abstract_inverted_index` is a JSON string: cast to
+  `MAP(VARCHAR, BIGINT[])` via JSON; records with repeated keys (~0.6 %)
+  fail that cast and are merged by `.api_merge_duplicate_keys()`
+  (`json_each`).
 - **`.api_build_version`** is part of the cache key: **bump it whenever
   `.api_build()` (or anything it creates) changes**, or users keep a
   stale cache.
@@ -119,8 +123,27 @@ Exported:
 every feature (filters, paging, sample, every `group_by`, all search
 forms, the 114-term example); run it after changes to the compiler or
 execution. On 11,000 works everything is under 0.35 s except the
-114-term search (1.7 s); building the database takes ~2 s. Costs grow
-about linearly with the number of works.
+114-term search (1.7 s); building the database takes ~2 s. Scaling on
+snapshot partitions (10k to 9.6M works, `tools/benchmark_scaling.csv`,
+figure `tools/plot_scaling.R` -\> `man/figures/scaling.svg`, shown in
+the README): queries stay flat while the database fits in RAM (~7 GB per
+million works) and slow down sharply beyond. The build must not keep
+whole rows in memory: the dedup window function runs only when ids
+repeat, `preserve_insertion_order = false`.
+
+## Docker
+
+`docker/` (Dockerfile, `serve.R` entrypoint with a `prepare` argument,
+`compose.yaml` with Caddy pulling the published image,
+`compose.build.yaml` to build from the checkout instead). The image
+installs the package from the checkout; the corpus is mounted at
+`/corpus`, the database lives in a `/cache` volume. Build from the
+package root: `docker build -f docker/Dockerfile -t openalexapi .`
+(colima works). `.github/workflows/docker.yaml` publishes
+`ghcr.io/openalexpro/openalexapi` on each release (and manual runs:
+branch tag), amd64 and arm64 on native runners, merged by digest. The
+vignette points at `main`’s `docker/compose.yaml` and `Caddyfile`, so
+keep those working.
 
 ## Common Commands
 

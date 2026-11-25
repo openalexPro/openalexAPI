@@ -1,5 +1,29 @@
 # Changelog
 
+## openalexAPI 0.1.2
+
+- Snapshot corpora (openalexSnapshot, OpenAlex’s Parquet snapshot) work:
+  their `abstract_inverted_index` is a JSON string, now read as a map.
+  Records whose index repeats a word (about 0.6 % in the snapshot) keep
+  their abstract, with the positions merged. Cached databases are
+  rebuilt once.
+- Building the database needs less memory: works are deduplicated only
+  when the corpus has duplicates, and rows are not kept in order. A 9.6
+  million work snapshot partition now builds on a 36 GB machine (13
+  minutes).
+- The cache key uses file times in whole seconds, so a database built
+  inside a Docker image is reused when the container starts.
+- Docker: each release is published as `ghcr.io/openalexpro/openalexapi`
+  (amd64 and arm64). `docker/compose.yaml` runs it behind Caddy (HTTPS),
+  so a server needs only Docker, two configuration files and the Parquet
+  files; see the vignette. `docker/Dockerfile` builds the image from a
+  checkout.
+- README: query times, database size, build time and memory for 10,000
+  to 9.6 million works, with recommendations.
+- Tests: the online tests skip when OpenAlex’s `/query` fails with a 5xx
+  (macOS CI runs failed on OpenAlex’s 504s); the server’s own errors
+  still fail.
+
 ## openalexAPI 0.1.1
 
 - Zenodo DOI (10.5281/zenodo.24514237, all versions) in `DESCRIPTION`,

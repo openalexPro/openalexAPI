@@ -21,7 +21,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">openalexAPI</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.1.1</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.1.2</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -54,7 +54,7 @@
 
 
 
-      <small class="dont-index">Source: <a href="https://github.com/openalexPro/openalexAPI/blob/v0.1.1/vignettes/openalexAPI.qmd" class="external-link"><code>vignettes/openalexAPI.qmd</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/openalexPro/openalexAPI/blob/v0.1.2/vignettes/openalexAPI.qmd" class="external-link"><code>vignettes/openalexAPI.qmd</code></a></small>
       <div class="d-none name"><code></code></div>
     </div>
 
@@ -110,7 +110,75 @@
 </div>
 <p>By default the server listens on <code>127.0.0.1</code>, so it is reachable only from your computer. Another <code>host</code> makes the corpus available on the network, and you get a warning. Requests are handled one at a time.</p>
 <p>Classic URLs and OQL need the network for translation: OpenAlex’s <code>/query</code> is free and costs no credits. A query sent as an OQO runs fully offline.</p>
-</section><section class="section level2"><h2 id="asking-questions">Asking questions<a class="anchor" aria-label="anchor" href="#asking-questions"></a>
+<section class="level2"><h3 id="running-on-a-server">Running on a server<a class="anchor" aria-label="anchor" href="#running-on-a-server"></a>
+</h3>
+<p>The same process serves the API and the web page, so a server needs only R, openalexAPI and the corpus on a local disk:</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb4"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="../reference/serve_corpus.html">serve_corpus</a></span><span class="op">(</span><span class="st">"/data/corpus"</span>, host <span class="op">=</span> <span class="st">"0.0.0.0"</span>, port <span class="op">=</span> <span class="fl">8000</span>,</span>
+<span>             cache_dir <span class="op">=</span> <span class="st">"/data/cache"</span><span class="op">)</span></span></code></pre></div>
+</div>
+<ul>
+<li>
+<strong>Network:</strong> the server needs outbound access to <code>api.openalex.org</code> to translate classic URLs and OQL.</li>
+<li>
+<strong>First start:</strong> it builds the database cache, which takes minutes for a large corpus. To avoid this, build it beforehand with <code><a href="../reference/prepare_corpus.html">prepare_corpus()</a></code> (on the server or elsewhere, then copy <code>cache_dir</code>).</li>
+<li>
+<strong>Keeping it running:</strong> use a systemd service or a container that restarts the process after a crash or reboot.</li>
+<li>
+<strong>Login and HTTPS:</strong> the server has neither, so anyone who reaches the port can query the corpus. Put a reverse proxy in front. The database is opened read-only, so users cannot change it.</li>
+<li>
+<strong>One request at a time:</strong> a heavy query (a search with many terms on a large corpus) holds up everyone else while it runs. That is fine for a group, not for public traffic.</li>
+<li>
+<strong>Its own host name or port:</strong> the page loads <code>/corpus</code> and <code>/assets/…</code> from the root of its host. It works at <code>openalex.example.org</code> or <code>example.org:8000</code>, not under a sub-path such as <code>example.org/openalex/</code>. For the same reason the page cannot be hosted on another server than the API.</li>
+<li>
+<strong><code>api_key</code>:</strong> a key passed to <code><a href="../reference/serve_corpus.html">serve_corpus()</a></code> is used for translation requests from users who send none.</li>
+</ul>
+<p>A <a href="https://caddyserver.com" class="external-link">Caddy</a> configuration with automatic HTTPS and a password (create the hash with <code>caddy hash-password</code>):</p>
+<pre><code>openalex.example.org {
+    basic_auth {
+        team &lt;password hash&gt;
+    }
+    reverse_proxy 127.0.0.1:8000
+}</code></pre>
+<p>With a proxy on the same machine, keep the default <code>host = "127.0.0.1"</code>, so the corpus is reachable only through the proxy. openalexPro clients then use <code>endpoint = "https://openalex.example.org"</code>. openalexPro sends no password, so if scripts should reach the server too, restrict it by network (a VPN or Caddy’s <code>remote_ip</code> matcher) instead of a password.</p>
+</section><section class="level2"><h3 id="with-docker">With Docker<a class="anchor" aria-label="anchor" href="#with-docker"></a>
+</h3>
+<p>Each release is published as a Docker image for x86 and ARM servers, <code>ghcr.io/openalexpro/openalexapi</code> (tags <code>latest</code> and the version, e.g. <code>0.1.2</code>). The image holds R, openalexAPI and DuckDB’s extensions.</p>
+<p><strong>The corpus is not part of the image.</strong> It is mounted read-only at <code>/corpus</code>, and the database goes into a volume at <code>/cache</code>, so it survives restarts and image updates. The image (about 3 GB, 0.8 GB to download) is the same for every corpus. To update the corpus, replace its Parquet files and restart. The database is rebuilt because its cache key includes the files’ sizes and modification times.</p>
+<p><strong>Server with HTTPS.</strong> The server needs Docker, ports 80 and 443 open, and a DNS name pointing at it. Copy the corpus to it (e.g. with <code>rsync -av my_corpus/ server:/data/my_corpus/</code>). On the server, download the two configuration files into a folder and start:</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="fu">mkdir</span> openalexapi <span class="kw">&amp;&amp;</span> <span class="bu">cd</span> openalexapi</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> <span class="at">-fsSLO</span> https://raw.githubusercontent.com/openalexPro/openalexAPI/main/docker/compose.yaml</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> <span class="at">-fsSLO</span> https://raw.githubusercontent.com/openalexPro/openalexAPI/main/docker/Caddyfile</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">OAAPI_CORPUS_DIR</span><span class="op">=</span>/data/my_corpus   <span class="co"># folder with the Parquet files</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a><span class="bu">export</span> <span class="va">OAAPI_DOMAIN</span><span class="op">=</span>openalex.example.org  <span class="co"># Caddy gets a certificate for it</span></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose run <span class="at">--rm</span> openalexapi prepare   <span class="co"># build the database once</span></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose up <span class="at">-d</span></span></code></pre></div>
+<ul>
+<li>
+<code>compose.yaml</code> runs two containers: openalexAPI, reachable only from the server itself, and <a href="https://caddyserver.com" class="external-link">Caddy</a>, the web server that faces the internet. Caddy gets and renews a free HTTPS certificate (Let’s Encrypt) for <code>OAAPI_DOMAIN</code> and passes the requests on to openalexAPI.</li>
+<li>
+<code>Caddyfile</code> is Caddy’s configuration: the domain and where to pass requests to. For a password, uncomment its <code>basic_auth</code> block.</li>
+<li>
+<code>prepare</code> builds the database before the server starts. Without it, the first start builds it, and the server answers only once that is done.</li>
+<li>Without <code>OAAPI_DOMAIN</code>, Caddy serves <code>https://localhost</code> with its own certificate, for trying it out.</li>
+<li>To update openalexAPI: <code>docker compose pull &amp;&amp; docker compose up -d</code>. A version is pinned with <code>OAAPI_IMAGE=ghcr.io/openalexpro/openalexapi:0.1.2</code>.</li>
+</ul>
+<p><strong>Only the API container</strong>, for example behind a proxy you already have:</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> run <span class="at">-d</span> <span class="at">--restart</span> unless-stopped <span class="at">-p</span> 127.0.0.1:8000:8000 <span class="dt">\</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">-v</span> /data/my_corpus:/corpus:ro <span class="at">-v</span> oaapi-cache:/cache <span class="dt">\</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>  ghcr.io/openalexpro/openalexapi</span></code></pre></div>
+<p>Settings are environment variables (<code>-e</code>): <code>OPENALEX_API_KEY</code> (see <code>api_key</code> above), <code>OAAPI_PORT</code> (default 8000).</p>
+<p><strong>Building the image yourself</strong> from a clone of the repository (for the development version, or changes of your own):</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="fu">git</span> clone https://github.com/openalexPro/openalexAPI <span class="kw">&amp;&amp;</span> <span class="bu">cd</span> openalexAPI</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> compose <span class="at">-f</span> docker/compose.yaml <span class="at">-f</span> docker/compose.build.yaml up <span class="at">-d</span> <span class="at">--build</span></span></code></pre></div>
+<p><strong>Memory.</strong> Give the container the memory the corpus needs (see the README’s section “Corpus size and memory”). DuckDB respects a Docker memory limit (<code>--memory</code>, or <code>mem_limit</code> in Compose) and uses 80 % of it. A database larger than that is read from disk and queries get slow. Keep the <code>oaapi-cache</code> volume on a fast local disk: a network drive slows every query.</p>
+<p><strong>A corpus inside the image.</strong> For a small corpus that is shipped as one file (to a place without the Parquet files), build an image on top that contains the corpus and its database:</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode dockerfile"><code class="sourceCode dockerfile"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="kw">FROM</span> ghcr.io/openalexpro/openalexapi:0.1.2</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="kw">COPY</span> <span class="op">--chown=oaapi</span> my_corpus/ /corpus/</span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a><span class="kw">RUN</span> <span class="ex">Rscript</span> /usr/local/bin/oaapi-serve.R prepare</span></code></pre></div>
+<p>Run it without the volumes. The image is then about the size of the database plus 3 GB, and changes to the corpus need a new image, so keep this for corpora that do not change.</p>
+</section></section><section class="section level2"><h2 id="asking-questions">Asking questions<a class="anchor" aria-label="anchor" href="#asking-questions"></a>
 </h2>
 <section class="level2"><h3 id="classic-urls">Classic URLs<a class="anchor" aria-label="anchor" href="#classic-urls"></a>
 </h3>
@@ -129,7 +197,7 @@
 <pre><code>/?oql=works where type is article and year &gt;= 2015
 /?oql=get the count of all works by country</code></pre>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb6"><pre class="downlit sourceCode r">
+<div class="sourceCode cell-code" id="cb12"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://httr2.r-lib.org" class="external-link">httr2</a></span><span class="op">)</span></span>
 <span><span class="va">oqo</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span></span>
 <span>  get_rows <span class="op">=</span> <span class="st">"works"</span>,</span>
@@ -166,7 +234,7 @@
 </h2>
 <p>Point openalexPro at the local server with <code>endpoint</code>. Everything else works as it does with OpenAlex: paging, <code>via = "url"</code> or <code>via = "oqo"</code>, grouped results, search, conversion to Parquet.</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb7"><pre class="downlit sourceCode r">
+<div class="sourceCode cell-code" id="cb13"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://github.com/openalexPro/openalexPro" class="external-link">openalexPro</a></span><span class="op">)</span></span>
 <span><span class="va">ep</span> <span class="op">&lt;-</span> <span class="st">"http://127.0.0.1:8000"</span></span>
 <span></span>
@@ -343,7 +411,7 @@
 </h2>
 <p><code><a href="../reference/oqo_to_sql.html">oqo_to_sql()</a></code> shows the SQL a query becomes:</p>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb8"><pre class="downlit sourceCode r">
+<div class="sourceCode cell-code" id="cb14"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">con</span> <span class="op">&lt;-</span> <span class="fu">DBI</span><span class="fu">::</span><span class="fu"><a href="https://dbi.r-dbi.org/reference/dbConnect.html" class="external-link">dbConnect</a></span><span class="op">(</span><span class="fu">duckdb</span><span class="fu">::</span><span class="fu"><a href="https://r.duckdb.org/reference/duckdb.html" class="external-link">duckdb</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="va">s</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/oqo_to_sql.html">oqo_to_sql</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>get_rows <span class="op">=</span> <span class="st">"works"</span>, filter_rows <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span></span>
 <span>  <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>column_id <span class="op">=</span> <span class="st">"type"</span>, value <span class="op">=</span> <span class="st">"article"</span><span class="op">)</span>,</span>

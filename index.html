@@ -21,7 +21,7 @@
 
     <a class="navbar-brand me-2" href="index.html">openalexAPI</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.1.1</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.1.2</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -134,6 +134,129 @@
 <li>
 <strong>Unsupported features</strong> get a clear HTTP 400 that names them: OpenAlex collections, semantic search, <code>group_by</code> on several dimensions, and OQL’s comparisons and nested queries. 156 of OpenAlex’s 174 OQL example queries run locally (<code>tools/oql_coverage.R</code>).</li>
 </ul>
+</div>
+<div class="section level2">
+<h2 id="corpus-size-and-memory">Corpus size and memory<a class="anchor" aria-label="anchor" href="#corpus-size-and-memory"></a>
+</h2>
+<figure><img src="reference/figures/scaling.svg" alt="Query times, database size, build time and memory for 10,000 to 9.6 million works"><figcaption aria-hidden="true">
+Query times, database size, build time and memory for 10,000 to 9.6 million works
+</figcaption></figure><p>These figures come from <code>tools/benchmark.R</code> (75 queries covering every feature) on parts of the OpenAlex snapshot, run on a Mac with 14 cores and 36 GB of RAM (<code>tools/benchmark_scaling.csv</code>, figure by <code>tools/plot_scaling.R</code>):</p>
+<table class="table">
+<colgroup>
+<col width="15%">
+<col width="10%">
+<col width="11%">
+<col width="9%">
+<col width="16%">
+<col width="17%">
+<col width="18%">
+</colgroup>
+<thead><tr>
+<th>Works</th>
+<th>Parquet</th>
+<th>Database</th>
+<th>Build</th>
+<th>Median query</th>
+<th>Slowest query</th>
+<th>Queries &gt; 1 s</th>
+</tr></thead>
+<tbody>
+<tr>
+<td>10,000</td>
+<td>0.02 GB</td>
+<td>0.04 GB</td>
+<td>2 s</td>
+<td>0.01 s</td>
+<td>1.8 s</td>
+<td>1 of 75</td>
+</tr>
+<tr>
+<td>100,000</td>
+<td>0.18 GB</td>
+<td>0.5 GB</td>
+<td>14 s</td>
+<td>0.04 s</td>
+<td>2.5 s</td>
+<td>3 of 75</td>
+</tr>
+<tr>
+<td>1 million</td>
+<td>1.6 GB</td>
+<td>7 GB</td>
+<td>1 min</td>
+<td>0.05 s</td>
+<td>4.9 s</td>
+<td>3 of 75</td>
+</tr>
+<tr>
+<td>4.9 million</td>
+<td>8.6 GB</td>
+<td>28 GB</td>
+<td>5 min</td>
+<td>0.29 s</td>
+<td>18 s</td>
+<td>16 of 75</td>
+</tr>
+<tr>
+<td>9.6 million</td>
+<td>21 GB</td>
+<td>63 GB</td>
+<td>13 min</td>
+<td>0.74 s</td>
+<td>51 s</td>
+<td>33 of 75</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>
+<strong>The database</strong> (the cache built by <code><a href="reference/prepare_corpus.html">prepare_corpus()</a></code>) takes 3 to 7 times the space of the Parquet files: about 7 GB per million works.</li>
+<li>
+<strong>Queries stay fast while the database fits in memory.</strong> Up to a million works the median query takes 0.05 s whatever the size. Once the database is larger than the RAM (here above about 5 million works), DuckDB reads from disk and queries get much slower. The slowest are long searches, <code>group_by</code> on references or keywords, and 200 records per page with all fields.</li>
+<li>
+<strong>Building</strong> needs more memory than serving: about 14 GB at a million works. Larger corpora use all the RAM and write to temporary files on disk, which works but slows the build down.</li>
+</ul>
+<p>Recommendations:</p>
+<table class="table">
+<colgroup>
+<col width="25%">
+<col width="25%">
+<col width="25%">
+<col width="25%">
+</colgroup>
+<thead><tr>
+<th>Works</th>
+<th>RAM</th>
+<th>Disk for the cache</th>
+<th>Use</th>
+</tr></thead>
+<tbody>
+<tr>
+<td>up to 1 million</td>
+<td>16 GB</td>
+<td>up to 10 GB</td>
+<td>interactive, on a laptop</td>
+</tr>
+<tr>
+<td>up to 5 million</td>
+<td>32 GB or more</td>
+<td>up to 40 GB</td>
+<td>interactive; heavy queries take seconds</td>
+</tr>
+<tr>
+<td>about 10 million</td>
+<td>64–96 GB (estimate)</td>
+<td>70 GB</td>
+<td>needs a server; on 36 GB, occasional queries only</td>
+</tr>
+</tbody>
+</table>
+<p>Put the cache (<code>cache_dir</code>) on a fast local SSD. The whole OpenAlex snapshot (over 250 million works) is out of scope.</p>
+</div>
+<div class="section level2">
+<h2 id="running-on-a-server">Running on a server<a class="anchor" aria-label="anchor" href="#running-on-a-server"></a>
+</h2>
+<p><code><a href="reference/serve_corpus.html">serve_corpus()</a></code> serves the API and the page from one process, so it can run on a server for a group. Each release is published as a Docker image, <code>ghcr.io/openalexpro/openalexapi</code>. With <code>docker/compose.yaml</code> and <code>docker/Caddyfile</code>, a server needs only Docker and the Parquet files: <a href="https://caddyserver.com" class="external-link">Caddy</a> in front adds HTTPS with a free certificate. The vignette’s section “Running on a server” has the steps, plus what the server does not do (logins, more than one request at a time).</p>
 <p>See <code><a href="articles/openalexAPI.html">vignette("openalexAPI")</a></code> for the details.</p>
 </div>
 </div>

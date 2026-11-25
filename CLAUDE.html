@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="index.html">openalexAPI</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.1.1</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.1.2</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -31,7 +31,7 @@
   <main id="main" class="col-md-9"><div class="page-header">
 
       <h1>CLAUDE.md</h1>
-      <small class="dont-index">Source: <a href="https://github.com/openalexPro/openalexAPI/blob/v0.1.1/CLAUDE.md" class="external-link"><code>CLAUDE.md</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/openalexPro/openalexAPI/blob/v0.1.2/CLAUDE.md" class="external-link"><code>CLAUDE.md</code></a></small>
     </div>
 
 <div id="claudemd" class="section level1">
@@ -86,7 +86,7 @@ OQO --&gt; oqo_to_sql() (registry) --&gt; .api_execute() / .api_execute_groups()
 <li>
 <strong>IDs match in any form</strong>: <code>id_key()</code> / <code>doi_key()</code> SQL macros (R twins <code>.api_id_key()</code>, <code>.api_doi_key()</code>), applied to both sides; no assumption about the letter prefix (<code>wZ…</code> IDs).</li>
 <li>
-<strong>The corpus</strong>: all <code>*.parquet</code> below the folder, works files only (<code>id</code> + <code>title</code>/ <code>display_name</code>), <code>union_by_name</code>, no hive columns, deduplicated on <code>id_key(id)</code>. Extra columns are served as they are. Not served: <code>.api_not_served</code> (<code>page</code>, <code>citation</code>, <code>abstract</code>, <code>relevance_score</code>) and <code>oaapi_*</code>. <code>abstract_inverted_index</code> is rebuilt for JSONL-path corpora (round-trips exactly). Filter columns whose type differs between files are cast back (<code>.api_column_types</code>).</li>
+<strong>The corpus</strong>: all <code>*.parquet</code> below the folder, works files only (<code>id</code> + <code>title</code>/ <code>display_name</code>), <code>union_by_name</code>, no hive columns, deduplicated on <code>id_key(id)</code>. Extra columns are served as they are. Not served: <code>.api_not_served</code> (<code>page</code>, <code>citation</code>, <code>abstract</code>, <code>relevance_score</code>) and <code>oaapi_*</code>. <code>abstract_inverted_index</code> is rebuilt for JSONL-path corpora (round-trips exactly). Filter columns whose type differs between files are cast back (<code>.api_column_types</code>). The snapshot’s <code>abstract_inverted_index</code> is a JSON string: cast to <code>MAP(VARCHAR, BIGINT[])</code> via JSON; records with repeated keys (~0.6 %) fail that cast and are merged by <code>.api_merge_duplicate_keys()</code> (<code>json_each</code>).</li>
 <li>
 <strong><code>.api_build_version</code></strong> is part of the cache key: <strong>bump it whenever <code>.api_build()</code> (or anything it creates) changes</strong>, or users keep a stale cache.</li>
 <li>
@@ -109,7 +109,11 @@ OQO --&gt; oqo_to_sql() (registry) --&gt; .api_execute() / .api_execute_groups()
 </ul></div>
 <div class="section level2">
 <h2 id="speed">Speed<a class="anchor" aria-label="anchor" href="#speed"></a></h2>
-<p><code>tools/benchmark.R</code> downloads an ~11,000-work corpus once and times every feature (filters, paging, sample, every <code>group_by</code>, all search forms, the 114-term example); run it after changes to the compiler or execution. On 11,000 works everything is under 0.35 s except the 114-term search (1.7 s); building the database takes ~2 s. Costs grow about linearly with the number of works.</p>
+<p><code>tools/benchmark.R</code> downloads an ~11,000-work corpus once and times every feature (filters, paging, sample, every <code>group_by</code>, all search forms, the 114-term example); run it after changes to the compiler or execution. On 11,000 works everything is under 0.35 s except the 114-term search (1.7 s); building the database takes ~2 s. Scaling on snapshot partitions (10k to 9.6M works, <code>tools/benchmark_scaling.csv</code>, figure <code>tools/plot_scaling.R</code> -&gt; <code>man/figures/scaling.svg</code>, shown in the README): queries stay flat while the database fits in RAM (~7 GB per million works) and slow down sharply beyond. The build must not keep whole rows in memory: the dedup window function runs only when ids repeat, <code>preserve_insertion_order = false</code>.</p>
+</div>
+<div class="section level2">
+<h2 id="docker">Docker<a class="anchor" aria-label="anchor" href="#docker"></a></h2>
+<p><code>docker/</code> (Dockerfile, <code>serve.R</code> entrypoint with a <code>prepare</code> argument, <code>compose.yaml</code> with Caddy pulling the published image, <code>compose.build.yaml</code> to build from the checkout instead). The image installs the package from the checkout; the corpus is mounted at <code>/corpus</code>, the database lives in a <code>/cache</code> volume. Build from the package root: <code>docker build -f docker/Dockerfile -t openalexapi .</code> (colima works). <code>.github/workflows/docker.yaml</code> publishes <code>ghcr.io/openalexpro/openalexapi</code> on each release (and manual runs: branch tag), amd64 and arm64 on native runners, merged by digest. The vignette points at <code>main</code>’s <code>docker/compose.yaml</code> and <code>Caddyfile</code>, so keep those working.</p>
 </div>
 <div class="section level2">
 <h2 id="common-commands">Common Commands<a class="anchor" aria-label="anchor" href="#common-commands"></a></h2>

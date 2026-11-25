@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">openalexAPI</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.1.1</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.1.2</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -31,9 +31,18 @@
   <main id="main" class="col-md-9"><div class="page-header">
 
       <h1>Changelog</h1>
-      <small>Source: <a href="https://github.com/openalexPro/openalexAPI/blob/v0.1.1/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
+      <small>Source: <a href="https://github.com/openalexPro/openalexAPI/blob/v0.1.2/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
     </div>
 
+    <div class="section level2">
+<h2 class="pkg-version" data-toc-text="0.1.2" id="openalexapi-012">openalexAPI 0.1.2<a class="anchor" aria-label="anchor" href="#openalexapi-012"></a></h2>
+<ul><li>Snapshot corpora (openalexSnapshot, OpenAlex’s Parquet snapshot) work: their <code>abstract_inverted_index</code> is a JSON string, now read as a map. Records whose index repeats a word (about 0.6 % in the snapshot) keep their abstract, with the positions merged. Cached databases are rebuilt once.</li>
+<li>Building the database needs less memory: works are deduplicated only when the corpus has duplicates, and rows are not kept in order. A 9.6 million work snapshot partition now builds on a 36 GB machine (13 minutes).</li>
+<li>The cache key uses file times in whole seconds, so a database built inside a Docker image is reused when the container starts.</li>
+<li>Docker: each release is published as <code>ghcr.io/openalexpro/openalexapi</code> (amd64 and arm64). <code>docker/compose.yaml</code> runs it behind Caddy (HTTPS), so a server needs only Docker, two configuration files and the Parquet files; see the vignette. <code>docker/Dockerfile</code> builds the image from a checkout.</li>
+<li>README: query times, database size, build time and memory for 10,000 to 9.6 million works, with recommendations.</li>
+<li>Tests: the online tests skip when OpenAlex’s <code>/query</code> fails with a 5xx (macOS CI runs failed on OpenAlex’s 504s); the server’s own errors still fail.</li>
+</ul></div>
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="0.1.1" id="openalexapi-011">openalexAPI 0.1.1<a class="anchor" aria-label="anchor" href="#openalexapi-011"></a></h2>
 <ul><li>Zenodo DOI (10.5281/zenodo.24514237, all versions) in <code>DESCRIPTION</code>, <code>CITATION</code>, <code>CITATION.cff</code> and the README.</li>
