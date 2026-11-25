@@ -1,0 +1,8 @@
+{$OAAPI_DOMAIN} {
+	# uncomment for a password (hash: docker run --rm caddy:2 caddy hash-password);
+	# openalexPro cannot send one, so restrict scripts by network instead
+	# basic_auth {
+	# 	team <password hash>
+	# }
+	reverse_proxy openalexapi:8000
+}

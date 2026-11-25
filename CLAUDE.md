@@ -96,8 +96,18 @@ OQO --> oqo_to_sql() (registry) --> .api_execute() / .api_execute_groups() --> J
 `tools/benchmark.R` downloads an ~11,000-work corpus once and times every feature (filters,
 paging, sample, every `group_by`, all search forms, the 114-term example); run it after
 changes to the compiler or execution. On 11,000 works everything is under 0.35 s except the
-114-term search (1.7 s); building the database takes ~2 s. Costs grow about linearly with the
-number of works.
+114-term search (1.7 s); building the database takes ~2 s. Scaling on snapshot partitions
+(10k to 9.6M works, `tools/benchmark_scaling.csv`, figure `tools/plot_scaling.R` ->
+`man/figures/scaling.svg`, shown in the README): queries stay flat while the database fits in
+RAM (~7 GB per million works) and slow down sharply beyond. The build must not keep whole rows
+in memory: the dedup window function runs only when ids repeat, `preserve_insertion_order = false`.
+
+## Docker
+
+`docker/` (Dockerfile, `serve.R` entrypoint with a `prepare` argument, `compose.yaml` with
+Caddy). The image installs the package from the checkout; the corpus is mounted at `/corpus`,
+the database lives in a `/cache` volume. Build from the package root:
+`docker build -f docker/Dockerfile -t openalexapi .` (colima works).
 
 ## Common Commands
 

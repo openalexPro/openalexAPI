@@ -138,4 +138,57 @@ without network access.
   OpenAlex’s 174 OQL example queries run locally
   (`tools/oql_coverage.R`).
 
+## Corpus size and memory
+
+<figure>
+<img src="man/figures/scaling.svg"
+alt="Query times, database size, build time and memory for 10,000 to 9.6 million works" />
+<figcaption aria-hidden="true">Query times, database size, build time
+and memory for 10,000 to 9.6 million works</figcaption>
+</figure>
+
+These figures come from `tools/benchmark.R` (75 queries covering every
+feature) on parts of the OpenAlex snapshot, run on a Mac with 14 cores
+and 36 GB of RAM (`tools/benchmark_scaling.csv`, figure by
+`tools/plot_scaling.R`):
+
+| Works       | Parquet | Database | Build  | Median query | Slowest query | Queries \> 1 s |
+|-------------|---------|----------|--------|--------------|---------------|----------------|
+| 10,000      | 0.02 GB | 0.04 GB  | 2 s    | 0.01 s       | 1.8 s         | 1 of 75        |
+| 100,000     | 0.18 GB | 0.5 GB   | 14 s   | 0.04 s       | 2.5 s         | 3 of 75        |
+| 1 million   | 1.6 GB  | 7 GB     | 1 min  | 0.05 s       | 4.9 s         | 3 of 75        |
+| 4.9 million | 8.6 GB  | 28 GB    | 5 min  | 0.29 s       | 18 s          | 16 of 75       |
+| 9.6 million | 21 GB   | 63 GB    | 13 min | 0.74 s       | 51 s          | 33 of 75       |
+
+- **The database** (the cache built by `prepare_corpus()`) takes 3 to 7
+  times the space of the Parquet files: about 7 GB per million works.
+- **Queries stay fast while the database fits in memory.** Up to a
+  million works the median query takes 0.05 s whatever the size. Once
+  the database is larger than the RAM (here above about 5 million
+  works), DuckDB reads from disk and queries get much slower. The
+  slowest are long searches, `group_by` on references or keywords, and
+  200 records per page with all fields.
+- **Building** needs more memory than serving: about 14 GB at a million
+  works. Larger corpora use all the RAM and write to temporary files on
+  disk, which works but slows the build down.
+
+Recommendations:
+
+| Works | RAM | Disk for the cache | Use |
+|----|----|----|----|
+| up to 1 million | 16 GB | up to 10 GB | interactive, on a laptop |
+| up to 5 million | 32 GB or more | up to 40 GB | interactive; heavy queries take seconds |
+| about 10 million | 64–96 GB (estimate) | 70 GB | needs a server; on 36 GB, occasional queries only |
+
+Put the cache (`cache_dir`) on a fast local SSD. The whole OpenAlex
+snapshot (over 250 million works) is out of scope.
+
+## Running on a server
+
+`serve_corpus()` serves the API and the page from one process, so it can
+run on a server for a group. `docker/` contains a Dockerfile and a
+Docker Compose setup with Caddy for HTTPS. The vignette’s section
+“Running on a server” covers both, plus what the server does not do
+(logins, more than one request at a time).
+
 See `vignette("openalexAPI")` for the details.

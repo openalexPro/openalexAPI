@@ -1,0 +1,35 @@
+# openalexAPI behind Caddy (HTTPS). From the package root:
+#   OAAPI_CORPUS_DIR=/data/my_corpus docker compose -f docker/compose.yaml up -d
+# Set OAAPI_DOMAIN to the server's name for a certificate; without it Caddy
+# serves http://localhost.
+services:
+  openalexapi:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: openalexapi
+    restart: unless-stopped
+    volumes:
+      - ${OAAPI_CORPUS_DIR:?set OAAPI_CORPUS_DIR to the corpus folder}:/corpus:ro
+      - oaapi-cache:/cache
+    environment:
+      OPENALEX_API_KEY: ${OPENALEX_API_KEY:-}
+    ports:
+      - "127.0.0.1:8000:8000"   # for the host only; the public way in is Caddy
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on: [openalexapi]
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      OAAPI_DOMAIN: ${OAAPI_DOMAIN:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+
+volumes:
+  oaapi-cache:
+  caddy-data:

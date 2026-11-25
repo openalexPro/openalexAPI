@@ -149,6 +149,71 @@ the corpus is reachable only through the proxy. openalexPro clients then use
 so if scripts should reach the server too, restrict it by network (a VPN or
 Caddy's `remote_ip` matcher) instead of a password.
 
+## With Docker
+
+The package's `docker/` folder (in the source repository, not the installed
+package) holds a Dockerfile and a Docker Compose setup with Caddy. You need
+Docker and a clone of the repository:
+
+```bash
+git clone https://github.com/openalexPro/openalexAPI
+cd openalexAPI
+```
+
+**The corpus is not part of the image.** The image holds R, openalexAPI and
+DuckDB's extensions. The corpus is mounted read-only at `/corpus`, and the
+database goes into a volume at `/cache`, so it survives restarts and image
+updates. This keeps the image (about 3 GB, 0.8 GB to download) the same for
+every corpus. To update the corpus, replace its Parquet files and restart. The
+database is rebuilt because its cache key includes the files' sizes and
+modification times.
+
+**Server with HTTPS.** Point a DNS name at the server, then:
+
+```bash
+export OAAPI_CORPUS_DIR=/data/my_corpus   # folder with the Parquet files
+export OAAPI_DOMAIN=openalex.example.org  # Caddy gets a certificate for it
+docker compose -f docker/compose.yaml run --rm openalexapi prepare   # build the database once
+docker compose -f docker/compose.yaml up -d
+```
+
+The `prepare` step builds the database before the server starts. Without it,
+the first start builds it, and the server answers only once that is done.
+For a password, uncomment `basic_auth` in `docker/Caddyfile`. Without
+`OAAPI_DOMAIN`, Caddy serves `https://localhost` with its own certificate,
+for trying it out.
+
+**Only the API container**, for example behind a proxy you already have:
+
+```bash
+docker build -f docker/Dockerfile -t openalexapi .
+docker run -d --restart unless-stopped -p 127.0.0.1:8000:8000 \
+  -v /data/my_corpus:/corpus:ro -v oaapi-cache:/cache openalexapi
+```
+
+Settings are environment variables (`-e`): `OPENALEX_API_KEY` (see `api_key`
+above), `OAAPI_PORT` (default 8000).
+
+**Memory.** Give the container the memory the corpus needs (see the README's
+section "Corpus size and memory"). DuckDB respects a Docker memory limit
+(`--memory`, or `mem_limit` in Compose) and uses 80 % of it. A database larger
+than that is read from disk and queries get slow. Keep the `oaapi-cache`
+volume on a fast local disk: a network drive slows every query.
+
+**A corpus inside the image.** For a small corpus that is shipped as one
+file (to a place without the Parquet files), build an image on top that
+contains the corpus and its database:
+
+```dockerfile
+FROM openalexapi
+COPY --chown=oaapi my_corpus/ /corpus/
+RUN Rscript /usr/local/bin/oaapi-serve.R prepare
+```
+
+Run it without the volumes. The image is then about the size of the database
+plus 3 GB, and changes to the corpus need a new image, so keep this for
+corpora that do not change.
+
 # Asking questions
 
 ## Classic URLs

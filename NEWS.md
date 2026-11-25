@@ -5,7 +5,14 @@
   index repeats a word (about 0.6 % in the snapshot) keep their abstract, with
   the positions merged. Cached databases are rebuilt once.
 - Building the database needs less memory: works are deduplicated only when
-  the corpus has duplicates, and rows are not kept in order.
+  the corpus has duplicates, and rows are not kept in order. A 9.6 million
+  work snapshot partition now builds on a 36 GB machine (13 minutes).
+- The cache key uses file times in whole seconds, so a database built inside
+  a Docker image is reused when the container starts.
+- `docker/`: a Dockerfile and a Docker Compose setup with Caddy (HTTPS) for
+  running the server on a server; see the vignette.
+- README: query times, database size, build time and memory for 10,000 to
+  9.6 million works, with recommendations.
 
 # openalexAPI 0.1.1
 
