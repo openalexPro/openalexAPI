@@ -41,9 +41,10 @@ Exported:
 
 - **Translation is OpenAlex’s**, via its free `POST /query`; there is no
   local OQL/URL parser. Called with httr2 directly, **not**
-  `openalexPro::pro_translate()`: the forwarded `POST /query` must
-  return OpenAlex’s status and body unchanged. OpenAlex validation
-  errors are passed through as they are (`.api_abort(body = ...)`).
+  [`openalexPro::pro_translate()`](https://openalexpro.github.io/openalexPro/reference/pro_translate.html):
+  the forwarded `POST /query` must return OpenAlex’s status and body
+  unchanged. OpenAlex validation errors are passed through as they are
+  (`.api_abort(body = ...)`).
 - **Registry keys come from the survey, not the docs.**
   `tools/spike_translate.R` records which OQO `column_id` OpenAlex emits
   for each classic filter (`tools/spike_findings.md`): e.g. `search=`
@@ -161,10 +162,12 @@ render with `rmarkdown::render("README.Rmd")` and delete `README.html`.
 
 - `claude/<description>` branches from `dev`; merge into `dev`; `main`
   gets release commits only.
-- Public since 0.1.0 (alpha). Not on the openalexPro r-universe (it is
-  not in the r-universe registry; add it there only when it leaves
-  alpha); installed from GitHub. Listed on the org landing page
-  (openalexpro.github.io) and org profile (dot-github) as Alpha.
+- Public since 0.1.0 (alpha); archived on Zenodo, concept DOI
+  10.5281/zenodo.24514237 (cite that one). Not on the openalexPro
+  r-universe (it is not in the r-universe registry; add it there only
+  when it leaves alpha); installed from GitHub. Listed on the org
+  landing page (openalexpro.github.io) and org profile (dot-github) as
+  Alpha.
 - Stacked PRs, merge in order: \#1 filters, \#2 group_by, \#3 search,
   \#4 page, \#5 docs, \#6 performance, \#7 more filters (lineage,
   funders, affiliation/author search, proximity, …).

@@ -1,5 +1,12 @@
 # Changelog
 
+## openalexAPI 0.1.1
+
+- Zenodo DOI (10.5281/zenodo.24514237, all versions) in `DESCRIPTION`,
+  `CITATION`, `CITATION.cff` and the README.
+- Tests: the server tests also run from the installed package (covr),
+  and no test leaves a database connection open.
+
 ## openalexAPI 0.1.0
 
 First version (alpha): not on r-universe, installed from GitHub.

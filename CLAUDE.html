@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="index.html">openalexAPI</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.1.0</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.1.1</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -31,7 +31,7 @@
   <main id="main" class="col-md-9"><div class="page-header">
 
       <h1>CLAUDE.md</h1>
-      <small class="dont-index">Source: <a href="https://github.com/openalexPro/openalexAPI/blob/v0.1.0/CLAUDE.md" class="external-link"><code>CLAUDE.md</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/openalexPro/openalexAPI/blob/main/CLAUDE.md" class="external-link"><code>CLAUDE.md</code></a></small>
     </div>
 
 <div id="claudemd" class="section level1">
@@ -74,7 +74,7 @@ OQO --&gt; oqo_to_sql() (registry) --&gt; .api_execute() / .api_execute_groups()
 <div class="section level2">
 <h2 id="key-design-decisions-keep-these">Key design decisions (keep these)<a class="anchor" aria-label="anchor" href="#key-design-decisions-keep-these"></a></h2>
 <ul><li>
-<strong>Translation is OpenAlex’s</strong>, via its free <code>POST /query</code>; there is no local OQL/URL parser. Called with httr2 directly, <strong>not</strong> <code>openalexPro::pro_translate()</code>: the forwarded <code>POST /query</code> must return OpenAlex’s status and body unchanged. OpenAlex validation errors are passed through as they are (<code>.api_abort(body = ...)</code>).</li>
+<strong>Translation is OpenAlex’s</strong>, via its free <code>POST /query</code>; there is no local OQL/URL parser. Called with httr2 directly, <strong>not</strong> <code><a href="https://openalexpro.github.io/openalexPro/reference/pro_translate.html" class="external-link">openalexPro::pro_translate()</a></code>: the forwarded <code>POST /query</code> must return OpenAlex’s status and body unchanged. OpenAlex validation errors are passed through as they are (<code>.api_abort(body = ...)</code>).</li>
 <li>
 <strong>Registry keys come from the survey, not the docs.</strong> <code>tools/spike_translate.R</code> records which OQO <code>column_id</code> OpenAlex emits for each classic filter (<code>tools/spike_findings.md</code>): e.g. <code>search=</code> -&gt; <code>fulltext.search</code>, <code>cites:</code> -&gt; <code>referenced_works</code>, <code>title.search</code> -&gt; <code>display_name.search</code>, <code>from_publication_date</code> stays its own column, an equality leaf has no <code>operator</code> key, ranges are two leaves, <code>null</code> values mean “field missing”. Re-run it when OpenAlex changes; a new or renamed <code>column_id</code> is a 400 here until the registry has it.</li>
 <li>
@@ -135,7 +135,7 @@ OQO --&gt; oqo_to_sql() (registry) --&gt; .api_execute() / .api_execute_groups()
 <h2 id="branching">Branching<a class="anchor" aria-label="anchor" href="#branching"></a></h2>
 <ul><li>
 <code>claude/&lt;description&gt;</code> branches from <code>dev</code>; merge into <code>dev</code>; <code>main</code> gets release commits only.</li>
-<li>Public since 0.1.0 (alpha). Not on the openalexPro r-universe (it is not in the r-universe registry; add it there only when it leaves alpha); installed from GitHub. Listed on the org landing page (openalexpro.github.io) and org profile (dot-github) as Alpha.</li>
+<li>Public since 0.1.0 (alpha); archived on Zenodo, concept DOI 10.5281/zenodo.24514237 (cite that one). Not on the openalexPro r-universe (it is not in the r-universe registry; add it there only when it leaves alpha); installed from GitHub. Listed on the org landing page (openalexpro.github.io) and org profile (dot-github) as Alpha.</li>
 <li>Stacked PRs, merge in order: #1 filters, #2 group_by, #3 search, #4 page, #5 docs, #6 performance, #7 more filters (lineage, funders, affiliation/author search, proximity, …).</li>
 </ul></div>
 <div class="section level2">
