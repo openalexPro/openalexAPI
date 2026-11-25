@@ -63,7 +63,9 @@ OQO --> oqo_to_sql() (registry) --> .api_execute() / .api_execute_groups() --> J
   columns are served as they are. Not served: `.api_not_served` (`page`, `citation`,
   `abstract`, `relevance_score`) and `oaapi_*`. `abstract_inverted_index` is rebuilt for
   JSONL-path corpora (round-trips exactly). Filter columns whose type differs between files are
-  cast back (`.api_column_types`).
+  cast back (`.api_column_types`). The snapshot's `abstract_inverted_index` is a JSON string: cast to
+  `MAP(VARCHAR, BIGINT[])` via JSON; records with repeated keys (~0.6 %) fail that cast and are
+  merged by `.api_merge_duplicate_keys()` (`json_each`).
 - **`.api_build_version`** is part of the cache key: **bump it whenever `.api_build()` (or
   anything it creates) changes**, or users keep a stale cache.
 - **Search**: two FTS tables (`oaapi_docs_stem` Porter + English stop words, `oaapi_docs_exact`

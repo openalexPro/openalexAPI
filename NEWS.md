@@ -1,5 +1,10 @@
 # openalexAPI (development version)
 
+- Snapshot corpora (openalexSnapshot, OpenAlex's Parquet snapshot) work: their
+  `abstract_inverted_index` is a JSON string, now read as a map. Records whose
+  index repeats a word (about 0.6 % in the snapshot) keep their abstract, with
+  the positions merged. Cached databases are rebuilt once.
+
 # openalexAPI 0.1.1
 
 - Zenodo DOI (10.5281/zenodo.24514237, all versions) in `DESCRIPTION`, `CITATION`,
