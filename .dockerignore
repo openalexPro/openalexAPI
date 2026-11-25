@@ -1,0 +1,11 @@
+.git
+.github
+.Rproj.user
+docs
+tests
+tools
+vignettes
+docker
+!docker/serve.R
+README.md
+*.Rproj

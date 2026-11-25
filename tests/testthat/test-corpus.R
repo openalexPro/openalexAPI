@@ -125,3 +125,37 @@ test_that("structs that differ only in field order are not reported", {
   # corpus_jq's two files have `ids` with the fields in different order
   expect_no_message(prepare_corpus(fixture("corpus_jq"), cache_dir = withr::local_tempdir()))
 })
+
+test_that("a snapshot corpus (inverted index as a JSON string) is read as a MAP", {
+  dir <- withr::local_tempdir()
+  ref <- local_fixture_con()
+  first <- DBI::dbGetQuery(ref, "SELECT min(id) AS id FROM works")$id
+  # the snapshot shape, written from the prepared fixture: no `abstract`, the
+  # index as JSON text; one record repeats a key, as some snapshot records do
+  keep <- setdiff(DBI::dbGetQuery(ref, "DESCRIBE works")$column_name,
+                  c("abstract", "abstract_inverted_index"))
+  keep <- DBI::dbQuoteIdentifier(ref, keep[!startsWith(keep, "oaapi_")])
+  DBI::dbExecute(ref, sprintf(
+    "COPY (SELECT %s, CASE WHEN id = '%s' THEN '{\"Coral\":[0],\"reefs\":[1,3],\"Coral\":[2]}'
+             ELSE CAST(to_json(abstract_inverted_index) AS VARCHAR) END AS abstract_inverted_index
+           FROM works) TO '%s/works.parquet' (FORMAT parquet)",
+    paste(keep, collapse = ", "), first, dir))
+
+  msgs <- testthat::capture_messages(db <- prepare_corpus(dir, cache_dir = withr::local_tempdir()))
+  expect_true(any(grepl("`abstract_inverted_index` .*converted back to MAP", msgs)))
+  expect_false(any(grepl("could not be read", msgs)))
+  con <- openalexAPI:::.api_open(db)
+  on.exit(DBI::dbDisconnect(con, shutdown = TRUE), add = TRUE)
+  types <- DBI::dbGetQuery(con, "DESCRIBE works")
+  expect_equal(types$column_type[types$column_name == "abstract_inverted_index"],
+               "MAP(VARCHAR, BIGINT[])")
+  # every abstract survives; the repeated key has its positions merged
+  same <- "SELECT id, oaapi_abstract FROM works WHERE id <> ? ORDER BY id"
+  expect_equal(DBI::dbGetQuery(con, same, params = list(first)),
+               DBI::dbGetQuery(ref, same, params = list(first)))
+  expect_equal(DBI::dbGetQuery(con, "SELECT oaapi_abstract FROM works WHERE id = ?",
+                               params = list(first))$oaapi_abstract, "Coral reefs Coral reefs")
+  # and is searchable
+  expect_equal(n_oqo(con, list(leaf("ids.openalex", first),
+                               list(column_id = "abstract.search", value = "reefs", operator = "has"))), 1)
+})

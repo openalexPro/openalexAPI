@@ -29,7 +29,8 @@ prepare_corpus <- function(
   }
   info <- file.info(files)
   key <- .api_md5(c(.api_build_version, corpus,
-                    paste(files, info$size, as.numeric(info$mtime))))
+                    # whole seconds: image layers and some file systems drop the fraction
+                    paste(files, info$size, floor(as.numeric(info$mtime)))))
   db <- file.path(cache_dir, paste0(key, ".duckdb"))
   if (file.exists(db) && !isTRUE(rebuild)) {
     return(invisible(db))
@@ -54,7 +55,7 @@ prepare_corpus <- function(
 #' a version with another layout is rebuilt. Bump it when `.api_build()` changes.
 #' @keywords internal
 #' @noRd
-.api_build_version <- "4"
+.api_build_version <- "6"
 
 #' Columns added by openalexPro or a query, not OpenAlex fields: never served
 #' @keywords internal
@@ -79,8 +80,21 @@ prepare_corpus <- function(
     stop("The corpus has no `id` column.", call. = FALSE)
   }
   has <- function(x) x %in% cols
+  # row order is irrelevant (every sort ends on id); lets DuckDB stream the
+  # build instead of holding it in memory
+  DBI::dbExecute(con, "SET preserve_insertion_order = false")
+  # the window function keeps whole rows in memory (9.6 million snapshot works
+  # ran out of 29 GB), so deduplicate only when there are duplicates
+  dups <- DBI::dbGetQuery(con, paste(
+    "SELECT count(*) - count(DISTINCT id_key(id)) AS n FROM", src, "WHERE id IS NOT NULL"
+  ))$n > 0
+  # the snapshot stores the inverted index as a JSON string (cast in `casts`)
+  aii_text <- has("abstract_inverted_index") &&
+    !grepl("^MAP\\(", desc$column_type[desc$column_name == "abstract_inverted_index"])
   abstract_text <- if (has("abstract")) {
     "abstract"
+  } else if (aii_text) {
+    gsub("abstract_inverted_index", .api_aii_cast, openalexPro::oa_works_abstract_sql(), fixed = TRUE)
   } else if (has("abstract_inverted_index")) {
     openalexPro::oa_works_abstract_sql()
   } else {
@@ -108,10 +122,13 @@ prepare_corpus <- function(
     if (has("title")) "title" else if (has("display_name")) "display_name" else "NULL::VARCHAR",
     " AS oaapi_title ",
     "FROM ", src, " WHERE id IS NOT NULL ",
-    "QUALIFY row_number() OVER (PARTITION BY id_key(id) ORDER BY id) = 1"
+    if (dups) "QUALIFY row_number() OVER (PARTITION BY id_key(id) ORDER BY id) = 1"
   ))
   if (!has("abstract_inverted_index")) {
     .api_add_inverted_index(con)
+  }
+  if (aii_text) {
+    .api_merge_duplicate_keys(con, src)
   }
   .api_add_fts(con)
   invisible(con)
@@ -178,7 +195,9 @@ prepare_corpus <- function(
   fwci = c("DOUBLE", "^(TINYINT|SMALLINT|INTEGER|BIGINT|HUGEINT|FLOAT|DOUBLE|DECIMAL.*)$"),
   publication_date = c("DATE", "^(DATE|TIMESTAMP.*)$"),
   is_retracted = c("BOOLEAN", "^BOOLEAN$"),
-  is_paratext = c("BOOLEAN", "^BOOLEAN$")
+  is_paratext = c("BOOLEAN", "^BOOLEAN$"),
+  # the snapshot stores it as a JSON string; served and searched as a MAP
+  abstract_inverted_index = c("MAP(VARCHAR, BIGINT[])", "^MAP\\(")
 )
 
 #' Tell which columns have different types in different files
@@ -223,16 +242,59 @@ prepare_corpus <- function(
     type <- desc$column_type[desc$column_name == col]
     if (grepl(want[[2]], type)) next
     q <- DBI::dbQuoteIdentifier(con, col)
+    # a MAP is read from text as JSON (DuckDB's own text form of a MAP differs)
+    if (startsWith(want[[1]], "MAP")) q <- paste0("TRY_CAST(", q, " AS JSON)")
+    bad <- if (startsWith(want[[1]], "MAP")) {
+      paste0("NOT json_valid(", DBI::dbQuoteIdentifier(con, col), ")")
+    } else {
+      paste0("TRY_CAST(", q, " AS ", want[[1]], ") IS NULL")
+    }
     lost <- DBI::dbGetQuery(con, paste0(
-      "SELECT count(*) AS n FROM ", src, " WHERE ", q, " IS NOT NULL AND TRY_CAST(", q,
-      " AS ", want[[1]], ") IS NULL"
+      "SELECT count(*) AS n FROM ", src, " WHERE ", q, " IS NOT NULL AND ", bad
     ))$n
     message("Column `", col, "` is read as ", type, "; converted back to ", want[[1]],
             if (lost > 0) paste0(" (", lost, " value(s) could not be read and are missing)"),
             ".")
-    out <- c(out, paste0("TRY_CAST(", q, " AS ", want[[1]], ") AS ", q))
+    out <- c(out, paste0("TRY_CAST(", q, " AS ", want[[1]], ") AS ", DBI::dbQuoteIdentifier(con, col)))
   }
   if (length(out)) paste0("REPLACE (", paste(out, collapse = ", "), ")") else ""
+}
+
+#' A JSON-string inverted index as a MAP (NULL if it cannot be cast)
+#' @keywords internal
+#' @noRd
+.api_aii_cast <- "TRY_CAST(TRY_CAST(abstract_inverted_index AS JSON) AS MAP(VARCHAR, BIGINT[]))"
+
+#' Inverted indexes with duplicate keys
+#'
+#' Some snapshot records repeat a word as a key (`{"social": [3], ...,
+#' "social": [9]}`). Such JSON cannot be cast to a MAP (the cast leaves NULL),
+#' so the positions of each word are merged here, and the abstract text is
+#' built from the merged index.
+#'
+#' @keywords internal
+#' @noRd
+.api_merge_duplicate_keys <- function(con, src) {
+  DBI::dbExecute(con, paste0(
+    "CREATE TEMP TABLE oaapi_dup AS ",
+    "SELECT i, map_from_entries(list({key: k, value: p})) AS m FROM (",
+    "  SELECT id_key(s.id) AS i, e.key AS k, ",
+    "    list_sort(list_distinct(flatten(list(CAST(e.value AS BIGINT[]))))) AS p ",
+    "  FROM (SELECT id, abstract_inverted_index AS j FROM ", src,
+    "        WHERE id IS NOT NULL AND json_valid(abstract_inverted_index) AND ",
+    .api_aii_cast, " IS NULL) s, json_each(s.j) e ",
+    "  GROUP BY ALL) GROUP BY i"
+  ))
+  on.exit(DBI::dbExecute(con, "DROP TABLE IF EXISTS oaapi_dup"), add = TRUE)
+  DBI::dbExecute(con, paste0(
+    "UPDATE works SET abstract_inverted_index = oaapi_dup.m FROM oaapi_dup ",
+    "WHERE works.oaapi_id = oaapi_dup.i AND works.abstract_inverted_index IS NULL"
+  ))
+  DBI::dbExecute(con, paste0(
+    "UPDATE works SET oaapi_abstract = ", openalexPro::oa_works_abstract_sql(),
+    " WHERE oaapi_id IN (SELECT i FROM oaapi_dup)"
+  ))
+  invisible(con)
 }
 
 #' Rebuild `abstract_inverted_index` from the abstract text (JSONL-path corpora)

@@ -101,6 +101,134 @@ get a warning. Requests are handled one at a time.
 Classic URLs and OQL need the network for translation: OpenAlex's `/query` is
 free and costs no credits. A query sent as an OQO runs fully offline.
 
+## Running on a server
+
+The same process serves the API and the web page, so a server needs only R,
+openalexAPI and the corpus on a local disk:
+
+```{r}
+serve_corpus("/data/corpus", host = "0.0.0.0", port = 8000,
+             cache_dir = "/data/cache")
+```
+
+- **Network:** the server needs outbound access to `api.openalex.org` to
+  translate classic URLs and OQL.
+- **First start:** it builds the database cache, which takes minutes for a
+  large corpus. To avoid this, build it beforehand with `prepare_corpus()`
+  (on the server or elsewhere, then copy `cache_dir`).
+- **Keeping it running:** use a systemd service or a container that restarts
+  the process after a crash or reboot.
+- **Login and HTTPS:** the server has neither, so anyone who reaches the port
+  can query the corpus. Put a reverse proxy in front. The database is opened
+  read-only, so users cannot change it.
+- **One request at a time:** a heavy query (a search with many terms on a
+  large corpus) holds up everyone else while it runs. That is fine for a
+  group, not for public traffic.
+- **Its own host name or port:** the page loads `/corpus` and `/assets/…` from
+  the root of its host. It works at `openalex.example.org` or
+  `example.org:8000`, not under a sub-path such as `example.org/openalex/`. For
+  the same reason the page cannot be hosted on another server than the API.
+- **`api_key`:** a key passed to `serve_corpus()` is used for translation
+  requests from users who send none.
+
+A [Caddy](https://caddyserver.com) configuration with automatic HTTPS and a
+password (create the hash with `caddy hash-password`):
+
+```
+openalex.example.org {
+    basic_auth {
+        team <password hash>
+    }
+    reverse_proxy 127.0.0.1:8000
+}
+```
+
+With a proxy on the same machine, keep the default `host = "127.0.0.1"`, so
+the corpus is reachable only through the proxy. openalexPro clients then use
+`endpoint = "https://openalex.example.org"`. openalexPro sends no password,
+so if scripts should reach the server too, restrict it by network (a VPN or
+Caddy's `remote_ip` matcher) instead of a password.
+
+## With Docker
+
+Each release is published as a Docker image for x86 and ARM servers,
+`ghcr.io/openalexpro/openalexapi` (tags `latest` and the version, e.g.
+`0.1.2`). The image holds R, openalexAPI and DuckDB's extensions.
+
+**The corpus is not part of the image.** It is mounted read-only at
+`/corpus`, and the database goes into a volume at `/cache`, so it survives
+restarts and image updates. The image (about 3 GB, 0.8 GB to download) is
+the same for every corpus. To update the corpus, replace its Parquet files
+and restart. The database is rebuilt because its cache key includes the
+files' sizes and modification times.
+
+**Server with HTTPS.** The server needs Docker, ports 80 and 443 open, and a
+DNS name pointing at it. Copy the corpus to it (e.g. with
+`rsync -av my_corpus/ server:/data/my_corpus/`). On the server, download
+the two configuration files into a folder and start:
+
+```bash
+mkdir openalexapi && cd openalexapi
+curl -fsSLO https://raw.githubusercontent.com/openalexPro/openalexAPI/main/docker/compose.yaml
+curl -fsSLO https://raw.githubusercontent.com/openalexPro/openalexAPI/main/docker/Caddyfile
+export OAAPI_CORPUS_DIR=/data/my_corpus   # folder with the Parquet files
+export OAAPI_DOMAIN=openalex.example.org  # Caddy gets a certificate for it
+docker compose run --rm openalexapi prepare   # build the database once
+docker compose up -d
+```
+
+- `compose.yaml` runs two containers: openalexAPI, reachable only from the
+  server itself, and [Caddy](https://caddyserver.com), the web server that
+  faces the internet. Caddy gets and renews a free HTTPS certificate (Let's
+  Encrypt) for `OAAPI_DOMAIN` and passes the requests on to openalexAPI.
+- `Caddyfile` is Caddy's configuration: the domain and where to pass requests
+  to. For a password, uncomment its `basic_auth` block.
+- `prepare` builds the database before the server starts. Without it, the
+  first start builds it, and the server answers only once that is done.
+- Without `OAAPI_DOMAIN`, Caddy serves `https://localhost` with its own
+  certificate, for trying it out.
+- To update openalexAPI: `docker compose pull && docker compose up -d`. A
+  version is pinned with `OAAPI_IMAGE=ghcr.io/openalexpro/openalexapi:0.1.2`.
+
+**Only the API container**, for example behind a proxy you already have:
+
+```bash
+docker run -d --restart unless-stopped -p 127.0.0.1:8000:8000 \
+  -v /data/my_corpus:/corpus:ro -v oaapi-cache:/cache \
+  ghcr.io/openalexpro/openalexapi
+```
+
+Settings are environment variables (`-e`): `OPENALEX_API_KEY` (see `api_key`
+above), `OAAPI_PORT` (default 8000).
+
+**Building the image yourself** from a clone of the repository (for the
+development version, or changes of your own):
+
+```bash
+git clone https://github.com/openalexPro/openalexAPI && cd openalexAPI
+docker compose -f docker/compose.yaml -f docker/compose.build.yaml up -d --build
+```
+
+**Memory.** Give the container the memory the corpus needs (see the README's
+section "Corpus size and memory"). DuckDB respects a Docker memory limit
+(`--memory`, or `mem_limit` in Compose) and uses 80 % of it. A database larger
+than that is read from disk and queries get slow. Keep the `oaapi-cache`
+volume on a fast local disk: a network drive slows every query.
+
+**A corpus inside the image.** For a small corpus that is shipped as one
+file (to a place without the Parquet files), build an image on top that
+contains the corpus and its database:
+
+```dockerfile
+FROM ghcr.io/openalexpro/openalexapi:0.1.2
+COPY --chown=oaapi my_corpus/ /corpus/
+RUN Rscript /usr/local/bin/oaapi-serve.R prepare
+```
+
+Run it without the volumes. The image is then about the size of the database
+plus 3 GB, and changes to the corpus need a new image, so keep this for
+corpora that do not change.
+
 # Asking questions
 
 ## Classic URLs
