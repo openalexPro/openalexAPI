@@ -1,13 +1,13 @@
-# openalexAPI behind Caddy (HTTPS). From the package root:
-#   OAAPI_CORPUS_DIR=/data/my_corpus docker compose -f docker/compose.yaml up -d
-# Set OAAPI_DOMAIN to the server's name for a certificate; without it Caddy
-# serves http://localhost.
+# openalexAPI behind Caddy (HTTPS), using the published image. On the server,
+# with this file and the Caddyfile in one folder:
+#   export OAAPI_CORPUS_DIR=/data/my_corpus OAAPI_DOMAIN=openalex.example.org
+#   docker compose run --rm openalexapi prepare   # build the database once
+#   docker compose up -d
+# Without OAAPI_DOMAIN, Caddy serves https://localhost. To build the image from
+# a checkout instead, add `-f compose.build.yaml`.
 services:
   openalexapi:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
-    image: openalexapi
+    image: ${OAAPI_IMAGE:-ghcr.io/openalexpro/openalexapi:latest}
     restart: unless-stopped
     volumes:
       - ${OAAPI_CORPUS_DIR:?set OAAPI_CORPUS_DIR to the corpus folder}:/corpus:ro

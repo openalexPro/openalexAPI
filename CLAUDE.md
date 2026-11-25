@@ -105,9 +105,13 @@ in memory: the dedup window function runs only when ids repeat, `preserve_insert
 ## Docker
 
 `docker/` (Dockerfile, `serve.R` entrypoint with a `prepare` argument, `compose.yaml` with
-Caddy). The image installs the package from the checkout; the corpus is mounted at `/corpus`,
-the database lives in a `/cache` volume. Build from the package root:
+Caddy pulling the published image, `compose.build.yaml` to build from the checkout instead).
+The image installs the package from the checkout; the corpus is mounted at `/corpus`, the
+database lives in a `/cache` volume. Build from the package root:
 `docker build -f docker/Dockerfile -t openalexapi .` (colima works).
+`.github/workflows/docker.yaml` publishes `ghcr.io/openalexpro/openalexapi` on each release
+(and manual runs: branch tag), amd64 and arm64 on native runners, merged by digest. The
+vignette points at `main`'s `docker/compose.yaml` and `Caddyfile`, so keep those working.
 
 ## Common Commands
 

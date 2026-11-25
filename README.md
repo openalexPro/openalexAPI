@@ -186,9 +186,12 @@ snapshot (over 250 million works) is out of scope.
 ## Running on a server
 
 `serve_corpus()` serves the API and the page from one process, so it can
-run on a server for a group. `docker/` contains a Dockerfile and a
-Docker Compose setup with Caddy for HTTPS. The vignette’s section
-“Running on a server” covers both, plus what the server does not do
-(logins, more than one request at a time).
+run on a server for a group. Each release is published as a Docker
+image, `ghcr.io/openalexpro/openalexapi`. With `docker/compose.yaml` and
+`docker/Caddyfile`, a server needs only Docker and the Parquet files:
+[Caddy](https://caddyserver.com) in front adds HTTPS with a free
+certificate. The vignette’s section “Running on a server” has the steps,
+plus what the server does not do (logins, more than one request at a
+time).
 
 See `vignette("openalexAPI")` for the details.

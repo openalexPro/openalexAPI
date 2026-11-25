@@ -9,8 +9,10 @@
   work snapshot partition now builds on a 36 GB machine (13 minutes).
 - The cache key uses file times in whole seconds, so a database built inside
   a Docker image is reused when the container starts.
-- `docker/`: a Dockerfile and a Docker Compose setup with Caddy (HTTPS) for
-  running the server on a server; see the vignette.
+- Docker: each release is published as `ghcr.io/openalexpro/openalexapi`
+  (amd64 and arm64). `docker/compose.yaml` runs it behind Caddy (HTTPS), so a
+  server needs only Docker, two configuration files and the Parquet files;
+  see the vignette. `docker/Dockerfile` builds the image from a checkout.
 - README: query times, database size, build time and memory for 10,000 to
   9.6 million works, with recommendations.
 
