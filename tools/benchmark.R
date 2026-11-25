@@ -13,7 +13,8 @@
 #
 # OAAPI_BENCH_CORPUS=<folder of works Parquet files> benchmarks that corpus
 # instead (e.g. a snapshot partition), with its own cached database;
-# OAAPI_BENCH_OUT=<file.csv> writes the results there.
+# OAAPI_BENCH_OUT=<file.csv> writes the results there;
+# OAAPI_BENCH_CACHE=<folder> puts the benchmark databases there.
 
 pkgload::load_all(quiet = TRUE)
 
@@ -30,7 +31,7 @@ if (!nzchar(own) && !dir.exists(parquet)) {
 }
 
 # the prepared database is kept between runs; OAAPI_BENCH_REBUILD=true times a fresh build
-cache <- file.path(tools::R_user_dir("openalexAPI", "cache"), "bench_db")
+cache <- Sys.getenv("OAAPI_BENCH_CACHE", file.path(tools::R_user_dir("openalexAPI", "cache"), "bench_db"))
 if (nzchar(own)) cache <- file.path(cache, substr(openalexAPI:::.api_md5(parquet), 1, 8))
 if (identical(Sys.getenv("OAAPI_BENCH_REBUILD"), "true")) unlink(cache, recursive = TRUE)
 t_prep <- system.time(db <- suppressMessages(prepare_corpus(parquet,
