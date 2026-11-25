@@ -65,6 +65,32 @@ call_api <- function(url, path, body = NULL) {
   if (!is.null(body)) r <- httr2::req_body_json(r, body, auto_unbox = TRUE)
   resp <- httr2::req_perform(r)
   text <- httr2::resp_body_string(resp)
+  skip_if_upstream_5xx(httr2::resp_status(resp), text)
   list(status = httr2::resp_status(resp), text = text,
        json = jsonlite::fromJSON(text, simplifyVector = FALSE))
+}
+
+# A 5xx from the server is OpenAlex's /query failing (passed through, or 503
+# when unreachable): skip the online test rather than fail it. The server's own
+# crash (500 "Internal error") still fails.
+skip_if_upstream_5xx <- function(status, text) {
+  if (status < 500) return(invisible())
+  json <- tryCatch(jsonlite::fromJSON(text), error = function(e) NULL)
+  if (status == 500 && identical(json$error, "Internal error")) return(invisible())
+  skip(paste0("OpenAlex /query failed upstream (HTTP ", status, ")"))
+}
+
+# openalexPro::pro_fetch(), skipping when it fails on such a 5xx
+fetch <- function(...) {
+  tryCatch(openalexPro::pro_fetch(...), error = function(e) {
+    for (cnd in list(e, e$parent, e$parent$parent)) {
+      if (inherits(cnd, "httr2_http") && !is.null(cnd$resp)) {
+        skip_if_upstream_5xx(httr2::resp_status(cnd$resp), httr2::resp_body_string(cnd$resp))
+      }
+    }
+    # via = "oqo": openalexPro rewraps a failed translation, only the message is left
+    status <- regmatches(conditionMessage(e), regexpr("(?<=HTTP )5[0-9]{2}", conditionMessage(e), perl = TRUE))
+    if (length(status)) skip_if_upstream_5xx(as.integer(status), "")
+    stop(e)
+  })
 }
