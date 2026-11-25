@@ -17,7 +17,7 @@ local_fixture_con <- function(name = "corpus_jq", env = parent.frame()) {
 n_oqo <- function(con, filter_rows, columns = NULL) {
   s <- oqo_to_sql(list(get_rows = "works", filter_rows = filter_rows), con, columns)
   drop <- openalexAPI:::.api_run_prelude(con, s)
-  on.exit(drop())
+  on.exit(drop(), add = TRUE)
   DBI::dbGetQuery(con, paste("SELECT count(*) AS n FROM works WHERE", s$where))$n
 }
 
@@ -39,7 +39,9 @@ local_server <- function(corpus = fixture("corpus_jq"), env = parent.frame()) {
   cache <- file.path(tempdir(), "oaapi-cache")
   pkg <- normalizePath(test_path("..", ".."))
   p <- callr::r_bg(function(pkg, corpus, port, cache) {
-    if (file.exists(file.path(pkg, "DESCRIPTION"))) {
+    # a source tree (devtools::test) has R/; an installed package (covr,
+    # R CMD check) has a DESCRIPTION but no sources, so load it instead
+    if (dir.exists(file.path(pkg, "R")) && length(list.files(file.path(pkg, "R"), "[.]R$")) > 0) {
       pkgload::load_all(pkg, quiet = TRUE)
     } else {
       library(openalexAPI)

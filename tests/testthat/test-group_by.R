@@ -108,7 +108,7 @@ test_that("keys sort as numbers where numeric, the unknown group last", {
 local_odd_corpus <- function(env = parent.frame()) {
   dir <- withr::local_tempdir(.local_envir = env)
   con0 <- DBI::dbConnect(duckdb::duckdb())
-  on.exit(DBI::dbDisconnect(con0, shutdown = TRUE))
+  on.exit(DBI::dbDisconnect(con0, shutdown = TRUE), add = TRUE)
   DBI::dbExecute(con0, sprintf("
     COPY (SELECT * REPLACE (
       CASE WHEN rn %% 2 = 0

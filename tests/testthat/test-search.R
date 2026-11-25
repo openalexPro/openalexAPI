@@ -168,7 +168,7 @@ test_that("stemmed phrases and proximity match word stems", {
                n_oqo(con, list(has(st, '"forest"~3~"tropical"'))))
   # works on a plain connection too (stem() needs the fts extension)
   plain <- DBI::dbConnect(duckdb::duckdb())
-  on.exit(DBI::dbDisconnect(plain, shutdown = TRUE))
+  on.exit(DBI::dbDisconnect(plain, shutdown = TRUE), add = TRUE)
   s <- oqo_to_sql(list(get_rows = "works", filter_rows = list(has(st, '"tropical forests"'))), plain)
   expect_match(s$where, "tropic")
 })

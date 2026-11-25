@@ -7,7 +7,7 @@ test_that("id_key normalises every id form, in SQL and in R, identically", {
   expect_identical(openalexAPI:::.api_id_key(ids), want)
 
   con <- openalexAPI:::.api_con()
-  on.exit(DBI::dbDisconnect(con, shutdown = TRUE))
+  on.exit(DBI::dbDisconnect(con, shutdown = TRUE), add = TRUE)
   DBI::dbWriteTable(con, "t", data.frame(x = ids))
   got <- DBI::dbGetQuery(con, "SELECT id_key(x) AS k FROM t")$k
   expect_identical(got, want)
@@ -21,7 +21,7 @@ test_that("doi_key normalises DOI forms, in SQL and in R, identically", {
   expect_identical(openalexAPI:::.api_doi_key(dois), rep("10.1/abc", 4))
 
   con <- openalexAPI:::.api_con()
-  on.exit(DBI::dbDisconnect(con, shutdown = TRUE))
+  on.exit(DBI::dbDisconnect(con, shutdown = TRUE), add = TRUE)
   DBI::dbWriteTable(con, "t", data.frame(x = dois))
   expect_identical(
     DBI::dbGetQuery(con, "SELECT doi_key(x) AS k FROM t")$k,
