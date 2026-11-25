@@ -1,4 +1,4 @@
-# openalexAPI (development version)
+# openalexAPI 0.1.2
 
 - Snapshot corpora (openalexSnapshot, OpenAlex's Parquet snapshot) work: their
   `abstract_inverted_index` is a JSON string, now read as a map. Records whose
@@ -15,6 +15,8 @@
   see the vignette. `docker/Dockerfile` builds the image from a checkout.
 - README: query times, database size, build time and memory for 10,000 to
   9.6 million works, with recommendations.
+- Tests: the online tests skip when OpenAlex's `/query` fails with a 5xx
+  (macOS CI runs failed on OpenAlex's 504s); the server's own errors still fail.
 
 # openalexAPI 0.1.1
 
