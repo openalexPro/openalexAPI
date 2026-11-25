@@ -101,6 +101,54 @@ get a warning. Requests are handled one at a time.
 Classic URLs and OQL need the network for translation: OpenAlex's `/query` is
 free and costs no credits. A query sent as an OQO runs fully offline.
 
+## Running on a server
+
+The same process serves the API and the web page, so a server needs only R,
+openalexAPI and the corpus on a local disk:
+
+```{r}
+serve_corpus("/data/corpus", host = "0.0.0.0", port = 8000,
+             cache_dir = "/data/cache")
+```
+
+- **Network:** the server needs outbound access to `api.openalex.org` to
+  translate classic URLs and OQL.
+- **First start:** it builds the database cache, which takes minutes for a
+  large corpus. To avoid this, build it beforehand with `prepare_corpus()`
+  (on the server or elsewhere, then copy `cache_dir`).
+- **Keeping it running:** use a systemd service or a container that restarts
+  the process after a crash or reboot.
+- **Login and HTTPS:** the server has neither, so anyone who reaches the port
+  can query the corpus. Put a reverse proxy in front. The database is opened
+  read-only, so users cannot change it.
+- **One request at a time:** a heavy query (a search with many terms on a
+  large corpus) holds up everyone else while it runs. That is fine for a
+  group, not for public traffic.
+- **Its own host name or port:** the page loads `/corpus` and `/assets/…` from
+  the root of its host. It works at `openalex.example.org` or
+  `example.org:8000`, not under a sub-path such as `example.org/openalex/`. For
+  the same reason the page cannot be hosted on another server than the API.
+- **`api_key`:** a key passed to `serve_corpus()` is used for translation
+  requests from users who send none.
+
+A [Caddy](https://caddyserver.com) configuration with automatic HTTPS and a
+password (create the hash with `caddy hash-password`):
+
+```
+openalex.example.org {
+    basic_auth {
+        team <password hash>
+    }
+    reverse_proxy 127.0.0.1:8000
+}
+```
+
+With a proxy on the same machine, keep the default `host = "127.0.0.1"`, so
+the corpus is reachable only through the proxy. openalexPro clients then use
+`endpoint = "https://openalex.example.org"`. openalexPro sends no password,
+so if scripts should reach the server too, restrict it by network (a VPN or
+Caddy's `remote_ip` matcher) instead of a password.
+
 # Asking questions
 
 ## Classic URLs
