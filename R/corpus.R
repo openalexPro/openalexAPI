@@ -29,7 +29,8 @@ prepare_corpus <- function(
   }
   info <- file.info(files)
   key <- .api_md5(c(.api_build_version, corpus,
-                    paste(files, info$size, as.numeric(info$mtime))))
+                    # whole seconds: image layers and some file systems drop the fraction
+                    paste(files, info$size, floor(as.numeric(info$mtime)))))
   db <- file.path(cache_dir, paste0(key, ".duckdb"))
   if (file.exists(db) && !isTRUE(rebuild)) {
     return(invisible(db))
