@@ -6,6 +6,7 @@ authors:
   - family-names: Krug
     given-names: Rainer M
     orcid: "https://orcid.org/0000-0002-7490-0066"
+doi: 10.5281/zenodo.24514237
 license: MIT
 repository-code: "https://github.com/openalexPro/openalexAPI"
 url: "https://openalexpro.github.io/openalexAPI/"

@@ -1,6 +1,6 @@
 Package: openalexAPI
 Title: Local OpenAlex-Compatible Web API over a Parquet Corpus
-Version: 0.1.0
+Version: 0.1.1
 Authors@R:
     person("Rainer M", "Krug", , "Rainer@krugs.de", role = c("aut", "cre"),
            comment = c(ORCID = "0000-0002-7490-0066"))
@@ -12,7 +12,7 @@ Description: Serves a local Parquet corpus of OpenAlex works through a web
     endpoint and compiled locally to DuckDB SQL. A small static web page is
     included for running searches in the browser.
 License: MIT + file LICENSE
-URL: https://github.com/openalexPro/openalexAPI, https://openalexpro.github.io/openalexAPI/
+URL: https://github.com/openalexPro/openalexAPI, https://openalexpro.github.io/openalexAPI/, https://doi.org/10.5281/zenodo.24514237
 BugReports: https://github.com/openalexPro/openalexAPI/issues
 Additional_repositories: https://openalexpro.r-universe.dev
 Encoding: UTF-8

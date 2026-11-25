@@ -1,8 +1,7 @@
 citHeader("To cite openalexAPI in publications use:")
 
 # Version and year come from the installed package, so nothing to bump at release.
-# Add `doi = "10.5281/zenodo.<id>"` here, in CITATION.cff and DESCRIPTION once
-# the first release is archived on Zenodo.
+# The DOI is Zenodo's concept DOI: it always resolves to the latest version.
 year <- substr(c(meta$`Date/Publication`, meta$Date, meta$Packaged, format(Sys.Date()))[1], 1, 4)
 
 bibentry(
@@ -12,10 +11,11 @@ bibentry(
   author  = person("Rainer M", "Krug", comment = c(ORCID = "0000-0002-7490-0066")),
   year    = year,
   note    = paste("R package version", meta$Version),
+  doi     = "10.5281/zenodo.24514237",
   url     = "https://github.com/openalexPro/openalexAPI",
   textVersion = paste0(
     "Krug, R. M. (", year, "). openalexAPI: Local OpenAlex-Compatible Web API over a ",
-    "Parquet Corpus. R package version ", meta$Version, ". https://github.com/openalexPro/openalexAPI"
+    "Parquet Corpus. R package version ", meta$Version, ". https://doi.org/10.5281/zenodo.24514237"
   )
 )
 

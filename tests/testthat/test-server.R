@@ -178,7 +178,7 @@ test_that("openalexPro downloads a sample spanning pages consistently", {
     openalexPro::pro_fetch(q, project_folder = out, via = via, progress = FALSE,
                            verbose = FALSE)
     con <- DBI::dbConnect(duckdb::duckdb())
-    on.exit(DBI::dbDisconnect(con, shutdown = TRUE))
+    on.exit(DBI::dbDisconnect(con, shutdown = TRUE), add = TRUE)
     DBI::dbGetQuery(con, sprintf("SELECT id FROM read_parquet('%s/**/*.parquet')", out))$id
   })
   for (x in ids) {

@@ -19,7 +19,7 @@ test_that("duplicate works across partitions are served once", {
     file.copy(list.files(fixture("corpus_api"), full.names = TRUE), file.path(dir, part))
   }
   con <- openalexAPI:::.api_open(prepare_corpus(dir, cache_dir = withr::local_tempdir()))
-  on.exit(DBI::dbDisconnect(con, shutdown = TRUE))
+  on.exit(DBI::dbDisconnect(con, shutdown = TRUE), add = TRUE)
   expect_equal(n_sql(con, "true"), 2)
   expect_false("query" %in% DBI::dbGetQuery(con, "DESCRIBE works")$column_name)
 })
@@ -52,7 +52,7 @@ test_that("Parquet files that hold no works are skipped", {
   DBI::dbDisconnect(con0, shutdown = TRUE)
   expect_message(db <- prepare_corpus(dir, cache_dir = withr::local_tempdir()), "Skipping 2")
   con <- openalexAPI:::.api_open(db)
-  on.exit(DBI::dbDisconnect(con, shutdown = TRUE))
+  on.exit(DBI::dbDisconnect(con, shutdown = TRUE), add = TRUE)
   expect_equal(n_sql(con, "true"), 2)
   expect_equal(n_sql(con, "id IS NULL"), 0)
 })
@@ -99,7 +99,7 @@ test_that("filter columns whose type differs between files are cast back", {
   expect_true(any(grepl("`locations_count` has different types", msgs)))
 
   con <- openalexAPI:::.api_open(db)
-  on.exit(DBI::dbDisconnect(con, shutdown = TRUE))
+  on.exit(DBI::dbDisconnect(con, shutdown = TRUE), add = TRUE)
   types <- DBI::dbGetQuery(con, "DESCRIBE works")
   type_of <- function(x) types$column_type[types$column_name == x]
   expect_equal(type_of("cited_by_count"), "BIGINT")
