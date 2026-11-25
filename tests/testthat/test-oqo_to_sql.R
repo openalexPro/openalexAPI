@@ -48,7 +48,7 @@ test_that("IDs match in any form, on both sides", {
      TO '%s/w.parquet' (FORMAT parquet)", fixture("corpus_jq"), dir))
   DBI::dbDisconnect(con0, shutdown = TRUE)
   con <- openalexAPI:::.api_open(prepare_corpus(dir, cache_dir = withr::local_tempdir()))
-  on.exit(DBI::dbDisconnect(con, shutdown = TRUE))
+  on.exit(DBI::dbDisconnect(con, shutdown = TRUE), add = TRUE)
   ids <- DBI::dbGetQuery(con, "(SELECT id FROM works WHERE id LIKE 'http%' LIMIT 2)
                              UNION ALL (SELECT id FROM works WHERE id NOT LIKE 'http%' LIMIT 2)")$id
   expect_true(any(!grepl("/", ids)) && any(grepl("/", ids)))
@@ -138,7 +138,7 @@ test_that("a struct field the corpus lacks is a 400", {
      TO '%s/w.parquet' (FORMAT parquet)", fixture("corpus_jq"), dir))
   DBI::dbDisconnect(con0, shutdown = TRUE)
   con <- openalexAPI:::.api_open(prepare_corpus(dir, cache_dir = withr::local_tempdir()))
-  on.exit(DBI::dbDisconnect(con, shutdown = TRUE))
+  on.exit(DBI::dbDisconnect(con, shutdown = TRUE), add = TRUE)
   ctx <- list(con = con, columns = DBI::dbGetQuery(con, "DESCRIBE works")$column_name,
               served = openalexAPI:::.api_served_columns(con))
   e <- tryCatch(openalexAPI:::.api_execute(ctx, list(get_rows = "works", filter_rows = list(
