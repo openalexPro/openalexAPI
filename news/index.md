@@ -1,5 +1,12 @@
 # Changelog
 
+## openalexAPI 0.1.3
+
+- Web page: it selects and offers sorts only on columns the corpus has.
+  Searches on a corpus without `cited_by_count` (for example one
+  imported from Zenodo or policy sources) failed with “Unknown select
+  field(s)”.
+
 ## openalexAPI 0.1.2
 
 - Snapshot corpora (openalexSnapshot, OpenAlex’s Parquet snapshot) work:
