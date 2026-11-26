@@ -331,3 +331,9 @@ test_that("online tests skip on OpenAlex's 5xx, not on the server's own crash", 
   expect_true(skips(500, '{"error":"oops"}'))
   expect_false(skips(500, '{"error":"Internal error","message":"bug"}'))
 })
+
+test_that("the startup message names the page address", {
+  expect_equal(.api_url("127.0.0.1", 8000), "http://127.0.0.1:8000/")
+  expect_equal(.api_url("0.0.0.0", 8000), "http://127.0.0.1:8000/")
+  expect_equal(.api_url("::1", 8790), "http://[::1]:8790/")
+})
