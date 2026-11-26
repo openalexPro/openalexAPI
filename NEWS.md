@@ -1,3 +1,8 @@
+# openalexAPI (development version)
+
+- `serve_corpus()` (and the Docker image) prints the addresses of the web page
+  and the API when the server starts.
+
 # openalexAPI 0.1.3
 
 - Web page: it selects and offers sorts only on columns the corpus has.

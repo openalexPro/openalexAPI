@@ -44,9 +44,21 @@ serve_corpus <- function(
   }
   db <- prepare_corpus(corpus, ...)
   app <- .api_app(db, api_key = api_key, root = root)
+  message("Serving ", corpus, "\n  Web page: ", .api_url(host, port),
+          "\n  API:      ", .api_url(host, port), "works")
   plumber2::api_run(app, host = host, port = port, block = block,
                     showcase = FALSE, silent = TRUE)
   invisible(app)
+}
+
+#' The address to open: all-interfaces hosts are reached on this computer
+#' as 127.0.0.1 (in Docker, the published port is 127.0.0.1:8000 too)
+#' @keywords internal
+#' @noRd
+.api_url <- function(host, port) {
+  if (host %in% c("0.0.0.0", "::")) host <- "127.0.0.1"
+  if (grepl(":", host, fixed = TRUE)) host <- paste0("[", host, "]")
+  paste0("http://", host, ":", port, "/")
 }
 
 #' View parameters: not part of the query, not sent for translation
