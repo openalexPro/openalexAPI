@@ -1,7 +1,8 @@
-# openalexAPI (development version)
+# openalexAPI 0.1.4
 
 - `serve_corpus()` (and the Docker image) prints the addresses of the web page
-  and the API when the server starts.
+  and the API when the server starts. In Docker it shows the container's
+  port (8000), not the one published on the host.
 
 # openalexAPI 0.1.3
 
