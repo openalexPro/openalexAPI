@@ -40,6 +40,17 @@ test_that("page URLs carry view parameters, copied URLs only the query", {
   expect_error(build(ctx, list(mode = "oql", oql = "  ")), "OQL")
 })
 
+test_that("only the corpus's columns are selected", {
+  # a corpus without cited_by_count (e.g. one imported from Zenodo) refuses it in `select`
+  ctx <- page_js()
+  f <- list(mode = "classic", filter = "", search = "x", exact = FALSE, groupBy = "", sort = "",
+            perPage = 25)
+  build_cols <- function(cols) ctx$call("OAQ.buildUrl", f, 1, cols)
+  sel <- strsplit(query_of(build_cols(c("id", "display_name", "type", "doi")))$select, ",")[[1]]
+  expect_equal(sel, c("id", "display_name", "type", "doi", "relevance_score"))
+  expect_match(query_of(build(ctx, f, 1))$select, "cited_by_count") # columns unknown: all
+})
+
 test_that("group keys become filter values; grouped responses are recognised", {
   ctx <- page_js()
   expect_equal(ctx$call("OAQ.groupFilterValue", "https://openalex.org/types/article"), "article")

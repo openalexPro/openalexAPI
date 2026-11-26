@@ -16,7 +16,9 @@ var OAQ = (function () {
   //   {mode: "classic"|"oql", oql, filter, search, exact, groupBy, sort, perPage}
   // `page` adds the page's view parameters (per_page, page, select); without
   // it the URL holds only the query, for openalexPro::pro_fetch().
-  function buildUrl(form, page) {
+  // `columns` (the corpus's served columns, from /corpus): only these are
+  // selected, so a corpus without e.g. cited_by_count still answers.
+  function buildUrl(form, page, columns) {
     var p = {};
     var grouped = form.mode === "classic" && !!form.groupBy;
     var path;
@@ -38,7 +40,7 @@ var OAQ = (function () {
       p.per_page = String(form.perPage || 25);
       p.page = String(page);
       if (!grouped) {
-        var sel = RECORD_FIELDS.slice();
+        var sel = RECORD_FIELDS.filter(function (f) { return !columns || columns.indexOf(f) >= 0; });
         if (form.mode === "classic" && (form.search || "").trim()) sel.push("relevance_score");
         p.select = sel.join(",");
       }

@@ -3,7 +3,7 @@
 "use strict";
 
 const $ = (id) => document.getElementById(id);
-const state = { mode: "classic", page: 1, lastForm: null, groupCol: null, seq: 0 };
+const state = { mode: "classic", page: 1, lastForm: null, groupCol: null, seq: 0, columns: null };
 const SORTS = [
   ["", "Default (relevance with a search, else most cited)"],
   ["cited_by_count:desc", "Most cited"],
@@ -25,7 +25,12 @@ function el(tag, attrs = {}, ...children) {
 function setSorts(grouped) {
   const sel = $("sort");
   const keep = sel.value;
-  sel.replaceChildren(...(grouped ? GROUP_SORTS : SORTS).map(([v, t]) => el("option", { value: v, text: t })));
+  // sorts on a column the corpus lacks (e.g. cited_by_count) are left out
+  const sorts = grouped ? GROUP_SORTS : SORTS.filter(([v]) => {
+    const col = v.split(":")[0];
+    return !v || col === "relevance_score" || !state.columns || state.columns.includes(col);
+  });
+  sel.replaceChildren(...sorts.map(([v, t]) => el("option", { value: v, text: t })));
   if ([...sel.options].some((o) => o.value === keep)) sel.value = keep;
 }
 
@@ -54,7 +59,7 @@ async function run(resetPage = true) {
   $("error").hidden = true;
   const f = form();
   let url;
-  try { url = OAQ.buildUrl(f, state.page); } catch (e) { return showError(e.message); }
+  try { url = OAQ.buildUrl(f, state.page, state.columns); } catch (e) { return showError(e.message); }
   const seq = ++state.seq; // only the latest request may render
   $("run").disabled = true;
   try {
@@ -164,6 +169,8 @@ async function loadCorpus() {
   try {
     const c = await (await fetch("/corpus")).json();
     $("corpus").textContent = `${c.works.toLocaleString()} works · ${c.corpus}`;
+    state.columns = c.columns || null;
+    setSorts($("groupby").value !== "");
     $("filters").replaceChildren(...c.filters.map((f) => {
       const b = el("button", { type: "button", text: f });
       b.addEventListener("click", () => {
