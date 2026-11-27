@@ -9,6 +9,10 @@
 - When `prepare_corpus()` builds a new database, it deletes the databases of
   earlier states of the same corpus. Database files are now named
   `oaapi_<corpus>_<state>.duckdb`.
+- `serve_corpus()` failed with "`shared_home` can't be applied to the
+  database instance" when the database was still open in the R session (for
+  example from an earlier, interrupted `serve_corpus()`). It now reuses the
+  open database.
 
 # openalexAPI 0.1.4
 

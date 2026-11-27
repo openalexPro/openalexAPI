@@ -21,10 +21,16 @@
   if (user_chose || !"shared_home" %in% names(formals(duckdb::duckdb))) {
     return(duckdb::duckdb(dbdir = dbdir, read_only = read_only))
   }
-  duckdb::duckdb(
-    dbdir = dbdir,
-    read_only = read_only,
-    shared_home = dir.exists("~/.duckdb")
+  # duckdb reuses an open instance for the same file and refuses `shared_home`
+  # for it ("can't be applied to the database instance"), e.g. when a server
+  # in this session still holds the database: open that instance as it is.
+  tryCatch(
+    duckdb::duckdb(
+      dbdir = dbdir,
+      read_only = read_only,
+      shared_home = dir.exists("~/.duckdb")
+    ),
+    error = function(e) duckdb::duckdb(dbdir = dbdir, read_only = read_only)
   )
 }
 
