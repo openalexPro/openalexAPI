@@ -28,3 +28,12 @@ test_that("doi_key normalises DOI forms, in SQL and in R, identically", {
     rep("10.1/abc", 4)
   )
 })
+
+test_that("a database already open in this session can be opened again", {
+  db <- prepare_corpus(fixture("corpus_api"), cache_dir = withr::local_tempdir())
+  con1 <- openalexAPI:::.api_open(db)
+  on.exit(DBI::dbDisconnect(con1, shutdown = TRUE), add = TRUE)
+  con2 <- openalexAPI:::.api_open(db)
+  on.exit(DBI::dbDisconnect(con2), add = TRUE)
+  expect_gt(DBI::dbGetQuery(con2, "SELECT count(*) AS n FROM works")$n, 0)
+})
