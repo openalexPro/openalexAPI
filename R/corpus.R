@@ -4,7 +4,8 @@
 #' row per work (duplicates across partitions removed), with helper columns
 #' for ID and DOI matching and the abstract as text. The database is cached
 #' and reused while the corpus files are unchanged (same paths, sizes and
-#' modification times).
+#' modification times). When a new database is built, the databases of
+#' earlier states of the same corpus in `cache_dir` are deleted.
 #'
 #' The corpus can come from `openalexPro::pro_request_parquet()` (keeps
 #' `abstract_inverted_index` and adds `abstract`), from the JSONL path (only
@@ -33,7 +34,9 @@ prepare_corpus <- function(
   key <- .api_md5(c(.api_build_version, corpus,
                     # whole seconds: image layers and some file systems drop the fraction
                     paste(files, info$size, floor(as.numeric(info$mtime)))))
-  db <- file.path(cache_dir, paste0(key, ".duckdb"))
+  # one prefix per corpus, so the databases of older states can be found and removed
+  prefix <- paste0("oaapi_", substr(.api_md5(corpus), 1, 8), "_")
+  db <- file.path(cache_dir, paste0(prefix, key, ".duckdb"))
   if (file.exists(db) && !isTRUE(rebuild)) {
     return(invisible(db))
   }
@@ -50,6 +53,9 @@ prepare_corpus <- function(
   DBI::dbDisconnect(con, shutdown = TRUE)
   on.exit()
   file.rename(tmp, db)
+  old <- list.files(cache_dir, paste0("^", prefix, "[0-9a-f]{32}\\.duckdb(\\.wal)?$"),
+                    full.names = TRUE)
+  unlink(setdiff(old, c(db, paste0(db, ".wal"))))
   invisible(db)
 }
 

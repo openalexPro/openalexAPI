@@ -8,7 +8,13 @@ test_that("prepare_corpus() caches by file state and rebuilds on change", {
   expect_identical(file.mtime(db1), t1)
 
   Sys.setFileTime(list.files(dir, full.names = TRUE)[[1]], Sys.time() + 60)
-  expect_false(identical(prepare_corpus(dir, cache_dir = cache), db1))
+  db2 <- prepare_corpus(dir, cache_dir = cache)
+  expect_false(identical(db2, db1))
+  expect_false(file.exists(db1))
+  other <- withr::local_tempdir()
+  file.copy(list.files(fixture("corpus_api"), full.names = TRUE), other)
+  prepare_corpus(other, cache_dir = cache)
+  expect_true(file.exists(db2))
   expect_error(prepare_corpus(withr::local_tempdir(), cache_dir = cache), "No Parquet")
 })
 
