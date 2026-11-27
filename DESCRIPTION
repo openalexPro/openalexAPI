@@ -1,6 +1,6 @@
 Package: openalexAPI
 Title: Local OpenAlex-Compatible Web API over a Parquet Corpus
-Version: 0.1.4
+Version: 0.1.4.9000
 Authors@R:
     person("Rainer M", "Krug", , "Rainer@krugs.de", role = c("aut", "cre"),
            comment = c(ORCID = "0000-0002-7490-0066"))

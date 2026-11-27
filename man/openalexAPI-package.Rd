@@ -13,6 +13,7 @@ Useful links:
 \itemize{
   \item \url{https://github.com/openalexPro/openalexAPI}
   \item \url{https://openalexpro.github.io/openalexAPI/}
+  \item \doi{10.5281/zenodo.24514237}
   \item Report bugs at \url{https://github.com/openalexPro/openalexAPI/issues}
 }
 

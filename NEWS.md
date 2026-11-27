@@ -1,3 +1,12 @@
+# openalexAPI (development version)
+
+- `prepare_corpus()` (and so `serve_corpus()`) keeps the database in the
+  folder that contains the corpus, by default, instead of
+  `tools::R_user_dir("openalexAPI", "cache")`. For a corpus in
+  `my_project/parquet` that is the project folder `my_project/`, as in
+  openalexPro. Pass `cache_dir` to keep it elsewhere; existing databases in
+  the old location are not moved and are rebuilt once.
+
 # openalexAPI 0.1.4
 
 - `serve_corpus()` (and the Docker image) prints the addresses of the web page

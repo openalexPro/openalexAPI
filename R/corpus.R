@@ -14,13 +14,15 @@
 #' @param corpus Directory with the corpus Parquet files (searched
 #'   recursively).
 #' @param rebuild Rebuild the database even if a cached one exists.
-#' @param cache_dir Where the database files are kept.
+#' @param cache_dir Where the database files are kept. Defaults to the folder
+#'   that contains `corpus` (the project folder, as in openalexPro), so the
+#'   database stays with the corpus it was built from.
 #' @return The path of the DuckDB database file, invisibly.
 #' @export
 prepare_corpus <- function(
   corpus,
   rebuild = FALSE,
-  cache_dir = tools::R_user_dir("openalexAPI", "cache")
+  cache_dir = dirname(corpus)
 ) {
   corpus <- normalizePath(corpus, mustWork = TRUE)
   files <- list.files(corpus, "\\.parquet$", recursive = TRUE, full.names = TRUE)
