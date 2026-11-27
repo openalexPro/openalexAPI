@@ -24,7 +24,8 @@ Reads all Parquet files below \code{corpus} into one DuckDB database file: one
 row per work (duplicates across partitions removed), with helper columns
 for ID and DOI matching and the abstract as text. The database is cached
 and reused while the corpus files are unchanged (same paths, sizes and
-modification times).
+modification times). When a new database is built, the databases of
+earlier states of the same corpus in \code{cache_dir} are deleted.
 }
 \details{
 The corpus can come from \code{openalexPro::pro_request_parquet()} (keeps

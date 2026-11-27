@@ -6,6 +6,9 @@
   `my_project/parquet` that is the project folder `my_project/`, as in
   openalexPro. Pass `cache_dir` to keep it elsewhere; existing databases in
   the old location are not moved and are rebuilt once.
+- When `prepare_corpus()` builds a new database, it deletes the databases of
+  earlier states of the same corpus. Database files are now named
+  `oaapi_<corpus>_<state>.duckdb`.
 
 # openalexAPI 0.1.4
 
