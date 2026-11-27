@@ -1,10 +1,10 @@
 # openalexAPI (development version)
 
-- `prepare_corpus()` (and so `serve_corpus()`) keeps the database in the
-  folder that contains the corpus, by default, instead of
+- `prepare_corpus()` (and so `serve_corpus()`) keeps the database in an
+  `API` folder next to the corpus, by default, instead of
   `tools::R_user_dir("openalexAPI", "cache")`. For a corpus in
-  `my_project/parquet` that is the project folder `my_project/`, as in
-  openalexPro. Pass `cache_dir` to keep it elsewhere; existing databases in
+  `my_project/parquet` that is `my_project/API/`, in the project folder as
+  in openalexPro. Pass `cache_dir` to keep it elsewhere; existing databases in
   the old location are not moved and are rebuilt once.
 - When `prepare_corpus()` builds a new database, it deletes the databases of
   earlier states of the same corpus. Database files are now named
