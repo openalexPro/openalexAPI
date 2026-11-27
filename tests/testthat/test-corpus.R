@@ -12,6 +12,15 @@ test_that("prepare_corpus() caches by file state and rebuilds on change", {
   expect_error(prepare_corpus(withr::local_tempdir(), cache_dir = cache), "No Parquet")
 })
 
+test_that("the database goes next to the corpus by default", {
+  project <- withr::local_tempdir()
+  dir <- file.path(project, "parquet")
+  dir.create(dir)
+  file.copy(list.files(fixture("corpus_api"), full.names = TRUE), dir)
+  db <- prepare_corpus(dir)
+  expect_identical(dirname(db), normalizePath(project))
+})
+
 test_that("duplicate works across partitions are served once", {
   dir <- withr::local_tempdir()
   for (part in c("query=a", "query=b")) {
