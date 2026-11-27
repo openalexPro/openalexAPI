@@ -4,7 +4,11 @@
 \alias{prepare_corpus}
 \title{Prepare a Parquet corpus for serving}
 \usage{
-prepare_corpus(corpus, rebuild = FALSE, cache_dir = dirname(corpus))
+prepare_corpus(
+  corpus,
+  rebuild = FALSE,
+  cache_dir = file.path(dirname(corpus), "API")
+)
 }
 \arguments{
 \item{corpus}{Directory with the corpus Parquet files (searched
@@ -12,9 +16,9 @@ recursively).}
 
 \item{rebuild}{Rebuild the database even if a cached one exists.}
 
-\item{cache_dir}{Where the database files are kept. Defaults to the folder
-that contains \code{corpus} (the project folder, as in openalexPro), so the
-database stays with the corpus it was built from.}
+\item{cache_dir}{Where the database files are kept. Defaults to an \code{API}
+folder next to \code{corpus}, i.e. in the project folder (as in openalexPro),
+so the database stays with the corpus it was built from.}
 }
 \value{
 The path of the DuckDB database file, invisibly.

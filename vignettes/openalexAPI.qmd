@@ -48,8 +48,8 @@ db <- prepare_corpus("my_project/parquet")
 ```
 
 `prepare_corpus()` reads every Parquet file below the folder into one DuckDB
-database and caches it in the folder that contains the corpus (here
-`my_project/`, the project folder), or in `cache_dir` if given. It
+database and caches it in an `API` folder next to the corpus (here
+`my_project/API/`, in the project folder), or in `cache_dir` if given. It
 is rebuilt only when the files change (paths, sizes, modification times) or a
 new version of openalexAPI changes the layout. `serve_corpus()` calls it, so
 you rarely need it yourself, except to build the database ahead of time for a

@@ -24,7 +24,7 @@ test_that("the database goes next to the corpus by default", {
   dir.create(dir)
   file.copy(list.files(fixture("corpus_api"), full.names = TRUE), dir)
   db <- prepare_corpus(dir)
-  expect_identical(dirname(db), normalizePath(project))
+  expect_identical(dirname(db), file.path(normalizePath(project), "API"))
 })
 
 test_that("duplicate works across partitions are served once", {
